@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="8" failures="8" disabled="0" errors="0" timestamp="2017-09-18T21:29:35" time="0.166" name="AllTests">
+  <testsuite name="TestEnv_Reliable" tests="8" failures="8" disabled="0" errors="0" time="0.166">
+    <testcase name="TestBind_Simple" status="run" time="0.001" classname="TestEnv_Reliable">
+      <failure message="testbind.cpp:46&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:46
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+    </testcase>
+    <testcase name="TestBind_DoubleBind" status="run" time="0" classname="TestEnv_Reliable">
+      <failure message="testbind.cpp:82&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:82
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+    </testcase>
+    <testcase name="TestBind_GetSockName" status="run" time="0" classname="TestEnv_Reliable">
+      <failure message="testbind.cpp:125&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:125
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+      <failure message="testbind.cpp:134&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:134
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+      <failure message="testbind.cpp:135&#x0A;Expected equality of these values:&#x0A;  memcmp(&amp;addr, addr2, len)&#x0A;    Which is: 2&#x0A;  0" type=""><![CDATA[testbind.cpp:135
+Expected equality of these values:
+  memcmp(&addr, addr2, len)
+    Which is: 2
+  0]]></failure>
+    </testcase>
+    <testcase name="TestBind_OverlapPort" status="run" time="0.001" classname="TestEnv_Reliable">
+      <failure message="testbind.cpp:172&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:172
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+    </testcase>
+    <testcase name="TestBind_OverlapClosed" status="run" time="0" classname="TestEnv_Reliable">
+      <failure message="testbind.cpp:218&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:218
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+      <failure message="testbind.cpp:229&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:229
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+    </testcase>
+    <testcase name="TestBind_DifferentIP_SamePort" status="run" time="0" classname="TestEnv_Reliable">
+      <failure message="testbind.cpp:265&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:265
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+      <failure message="testbind.cpp:274&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:274
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+    </testcase>
+    <testcase name="TestBind_SameIP_DifferentPort" status="run" time="0" classname="TestEnv_Reliable">
+      <failure message="testbind.cpp:311&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:311
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+      <failure message="testbind.cpp:320&#x0A;Expected equality of these values:&#x0A;  ret&#x0A;    Which is: -1&#x0A;  0" type=""><![CDATA[testbind.cpp:320
+Expected equality of these values:
+  ret
+    Which is: -1
+  0]]></failure>
+    </testcase>
+    <testcase name="TestOpen" status="run" time="0.164" classname="TestEnv_Reliable">
+      <failure message="testopen.cpp:65&#x0A;Expected equality of these values:&#x0A;  success&#x0A;    Which is: 0&#x0A;  ((size_t)test_size) * ((size_t)test_repeat)&#x0A;    Which is: 131072" type=""><![CDATA[testopen.cpp:65
+Expected equality of these values:
+  success
+    Which is: 0
+  ((size_t)test_size) * ((size_t)test_repeat)
+    Which is: 131072]]></failure>
+      <failure message="testopen.cpp:66&#x0A;Expected equality of these values:&#x0A;  failed&#x0A;    Which is: 131072&#x0A;  0" type=""><![CDATA[testopen.cpp:66
+Expected equality of these values:
+  failed
+    Which is: 131072
+  0]]></failure>
+      <failure message="testopen.cpp:67&#x0A;Expected equality of these values:&#x0A;  duplicated&#x0A;    Which is: 67043328&#x0A;  0" type=""><![CDATA[testopen.cpp:67
+Expected equality of these values:
+  duplicated
+    Which is: 67043328
+  0]]></failure>
+    </testcase>
+  </testsuite>
+</testsuites>
