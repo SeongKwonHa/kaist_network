@@ -22,6 +22,15 @@
 namespace E
 {
 
+struct Sockmeta{
+	int pid;
+	int fd;
+	sa_family_t sin_family; 
+	unsigned short int port;
+	struct in_addr ip;
+	socklen_t addrlen;
+};
+
 class TCPAssignment : public HostModule, public NetworkModule, public SystemCallInterface, private NetworkLog, private TimerModule
 {
 private:
@@ -37,6 +46,12 @@ public:
 protected:
 	virtual void systemCallback(UUID syscallUUID, int pid, const SystemCallParameter& param) final;
 	virtual void packetArrived(std::string fromModule, Packet* packet) final;
+	//add
+	std::vector<Sockmeta*> socketlist;
+	virtual void syscall_socket(UUID syscallUUID, int pid, int domain, int type);
+	virtual void syscall_close(UUID syscallUUID, int pid, int sockfd);
+	virtual void syscall_bind(UUID syscallUUID, int pid, int sockfd, struct sockaddr *myaddr, socklen_t addrlen);
+	virtual void syscall_getsockname(UUID syscallUUID, int pid, int sockfd, struct sockaddr * name , socklen_t * namelen);
 };
 
 class TCPAssignmentProvider
