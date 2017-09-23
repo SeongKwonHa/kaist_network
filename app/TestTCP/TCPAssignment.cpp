@@ -156,6 +156,21 @@ void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct s
 				returnSystemCall(syscallUUID, -1);
 				return;
 			}
+			if((port == socketlist[i]->port)&&(ip.s_addr == INADDR_ANY)){
+				//2)조건
+				returnSystemCall(syscallUUID, -1);
+				return;
+			}
+			if((port == socketlist[i]->port)&&(socketlist[i]->ip.s_addr == 0)){
+				//2)조건
+				returnSystemCall(syscallUUID, -1);
+				return;
+			}
+			if((port == socketlist[i]->port)&&(ip.s_addr == 0)){
+				//2)조건
+				returnSystemCall(syscallUUID, -1);
+				return;
+			}
 			if((port == socketlist[i]->port)&&(ip.s_addr == socketlist[i]->ip.s_addr)){
 				//2)조건
 				returnSystemCall(syscallUUID, -1);
