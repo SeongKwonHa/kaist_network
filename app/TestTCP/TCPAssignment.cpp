@@ -104,6 +104,8 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 		sockmeta->pid = pid;
 		sockmeta->fd = fd;
 		sockmeta->sin_family = 0;//bind 된적 있는지 없는지 체크
+		sockmeta->ip.s_addr = 0;
+		sockmeta->port = 0;
 		socketlist.push_back(sockmeta);
 		returnSystemCall(syscallUUID, fd);
 		//printf("syscall_socket fd : %d\n", fd);
@@ -151,7 +153,16 @@ void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct s
 		//이미 있는 socket들 중에서 bind rule을 점검
 		//testcase에서는 1)같은 fd에 두번 bind하는 것 하나과 2)다른 fd지만 overlap 조건
 		for(int i=0;i<socketlist.size();i++){
+			//printf("size : %d\n", socketlist.size());
+			//printf("compare fd : %d\n", socketlist[i]->fd);
+			//printf("port_test :%d, input port:%d, listport:%d\n", (port == socketlist[i]->port), port, socketlist[i]->port);
+			//printf("ip_test: %d, input ip:%d, listip:%d\n", (socketlist[i]->ip.s_addr == INADDR_ANY), ip.s_addr, socketlist[i]->ip.s_addr);
 			if((port == socketlist[i]->port)&&(socketlist[i]->ip.s_addr == INADDR_ANY)){
+				//2)조건
+				returnSystemCall(syscallUUID, -1);
+				return;
+			}
+			if((port == socketlist[i]->port)&&(ip.s_addr == INADDR_ANY)){
 				//2)조건
 				returnSystemCall(syscallUUID, -1);
 				return;
@@ -174,7 +185,7 @@ void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct s
 			if(socketlist[i]->fd==sockfd){
 				socketlist[i]->sin_family = sin_family;
 				socketlist[i]->port = port;
-				socketlist[i]->ip = ip;
+				socketlist[i]->ip.s_addr = ip.s_addr;
 				socketlist[i]->addrlen = addrlen;
 				result = 1;
 				break;
