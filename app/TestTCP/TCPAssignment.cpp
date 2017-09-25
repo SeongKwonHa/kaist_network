@@ -106,6 +106,7 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 		sockmeta->sin_family = 0;//bind 된적 있는지 없는지 체크
 		sockmeta->ip.s_addr = 0;
 		sockmeta->port = 0;
+		sockmeta->addrlen = 0;
 		socketlist.push_back(sockmeta);
 		returnSystemCall(syscallUUID, fd);
 		//printf("syscall_socket fd : %d\n", fd);
