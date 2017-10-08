@@ -22,6 +22,14 @@
 namespace E
 {
 
+enum State{
+	int LISTEN;
+	int CLOSED;
+	int SYN_SENT;
+	int SYN_RCVD;
+	int ESTAB;
+}
+
 struct Sockmeta{
 	int pid;
 	int fd;
@@ -29,6 +37,7 @@ struct Sockmeta{
 	unsigned short int port;
 	struct in_addr ip;
 	socklen_t addrlen;
+	struct State state;
 };
 
 class TCPAssignment : public HostModule, public NetworkModule, public SystemCallInterface, private NetworkLog, private TimerModule
@@ -48,10 +57,18 @@ protected:
 	virtual void packetArrived(std::string fromModule, Packet* packet) final;
 	//add
 	std::vector<Sockmeta*> socketlist;
+	std::queue<Sockenta*> listenlist;
 	virtual void syscall_socket(UUID syscallUUID, int pid, int domain, int type);
 	virtual void syscall_close(UUID syscallUUID, int pid, int sockfd);
 	virtual void syscall_bind(UUID syscallUUID, int pid, int sockfd, struct sockaddr *myaddr, socklen_t addrlen);
 	virtual void syscall_getsockname(UUID syscallUUID, int pid, int sockfd, struct sockaddr * name , socklen_t * namelen);
+	virtual void syscall_listen(UUID syscallUUID, int pid, int sockfd, int backlog);
+	virtual void syscall_accecpt(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+	virtual void syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+	virtual void syscall_getpeername(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+
+
+
 };
 
 class TCPAssignmentProvider
