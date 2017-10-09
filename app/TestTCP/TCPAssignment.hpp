@@ -48,7 +48,7 @@ struct Sockmeta{
 	int backlog;
 	std::queue<Connection *> waitingqueue;
 	std::queue<Connection *> estabqueue;
-	std::queue<Sockmeta *> accpetqueue;
+	std::queue<Sockmeta *> acceptqueue;
 };
 
 class TCPAssignment : public HostModule, public NetworkModule, public SystemCallInterface, private NetworkLog, private TimerModule

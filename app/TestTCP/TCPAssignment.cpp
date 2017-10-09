@@ -112,6 +112,9 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 	msg_seq[2]=2;
 	msg_seq[3]=3;
 	
+	struct Sockmeta * mysocket;
+	int result=0;
+
 	switch(*flag){
 		case 0x002:
 			//syn only
@@ -124,10 +127,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			mypacket->writeData(14+24, msg_seq, 4);
 			mypacket->writeData(14+28, seq, 4);
 			mypacket->writeData(14+33, flag, 1);
-			struct Sockmeta mysocket;
-			int result =0;
 			for(int i=0;i<socketlist.size();i++){
-				if(socketlist[i].port == *s_port && socketlist[i].ip == *source){
+				if(socketlist[i]->port == ntohl(s_port[0]) && socketlist[i]->ip.s_addr == ntohl(source[0])){
 					mysocket = socketlist[i];
 					result = 1;
 					break;
@@ -139,14 +140,14 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			}
 			mysocket->state = State::SYN_RCVD;
 			struct Connection *connect_info;
-			connect_info->dest = dest;
-			connect_info->source = source;
-			connect_info->d_port = d_port;
-			connect_info->s_port = s_port;
-			if(mysocket->waitingqueue.size()==mysocket.backlog){
+			connect_info->dest[0] = dest[0];
+			connect_info->source[0] = source[0];
+			connect_info->d_port[0] = d_port[0];
+			connect_info->s_port[0] = s_port[0];
+			if(mysocket->waitingqueue.size()==mysocket->backlog){
 				this->freePacket(packet);
 			}else{
-				mysocket->waitingqueue.push_back(connect_info);
+				mysocket->waitingqueue.push(connect_info);
 				this->sendPacket(fromModule,mypacket);
 				this->freePacket(packet);
 			}
@@ -155,59 +156,60 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 
 		case 0x012:
 		//syn+ack
-		seq[0] = ntohl(htonl(seq[0])+1);
-		flag[0] = 0x010;
-		mypacket->writeData(14+12, dest, 4);
-		mypacket->writeData(14+16, source, 4);
-		mypacket->writeData(14+20, d_port, 2);
-		mypacket->writeData(14+22, s_port, 2);
-		mypacket->writeData(14+24, msg_seq, 4);
-		mypacket->writeData(14+28, seq, 4);
-		mypacket->writeData(14+33, flag, 1);
+			seq[0] = ntohl(htonl(seq[0])+1);
+			flag[0] = 0x010;
+			mypacket->writeData(14+12, dest, 4);
+			mypacket->writeData(14+16, source, 4);
+			mypacket->writeData(14+20, d_port, 2);
+			mypacket->writeData(14+22, s_port, 2);
+			mypacket->writeData(14+24, msg_seq, 4);
+			mypacket->writeData(14+28, seq, 4);
+			mypacket->writeData(14+33, flag, 1);
 
-		struct Sockmeta mysocket;
-		int result =0;
-		for(int i=0;i<socketlist.size();i++){
-			if(socketlist[i].port == *s_port && socketlist[i].ip == *source){
-				mysocket = socketlist[i];
-				result = 1;
+			for(int i=0;i<socketlist.size();i++){
+				if(socketlist[i]->port == ntohl(s_port[0]) && socketlist[i]->ip.s_addr == ntohl(source[0])){
+					mysocket = socketlist[i];
+					result = 1;
+					break;
+				}
+			}
+			if(result==0){
+				this->freePacket(packet);
 				break;
 			}
-		}
-		if(result==0){
+			mysocket->state = State::ESTAB;
+			this->sendPacket(fromModule,mypacket);
 			this->freePacket(packet);
 			break;
-		}
-		mysocket->state = State::ESTAB;
-		this->sendPacket(fromModule,mypacket);
-		this->freePacket(packet);
-		break;
 
 		case 0x010:
 		//ack
-		struct Sockmeta mysocket;
-		int result =0;
-		for(int i=0;i<socketlist.size();i++){
-			if(socketlist[i].port == *s_port && socketlist[i].ip == *source){
-				mysocket = socketlist[i];
-				result = 1;
+		
+			for(int i=0;i<socketlist.size();i++){
+				if(socketlist[i]->port == ntohl(s_port[0]) && socketlist[i]->ip.s_addr == ntohl(source[0])){
+					mysocket = socketlist[i];
+					result = 1;
+					break;
+				}
+			}
+			if(result==0){
+				this->freePacket(packet);
 				break;
 			}
-		}
-		if(result==0){
-			this->freePacket(packet);
-			break;
-		}
-		mysocket->state = State::ESTAB;
-		struct Connection * myconnect = mysocket->waitingqueue.pop(connect_info);
-		mysocket->estabqueue.push_back(myconnect);
+			mysocket->state = State::ESTAB;
+			struct Connection * myconnect;
+			myconnect = mysocket->waitingqueue.front();
+			mysocket->waitingqueue.pop();
+			mysocket->estabqueue.push(myconnect);
 
-		struct Sockmeta *tempsocket = mysocket->acceptueue.pop();
-		tempsocket->connection = myconnect;
-		this->freePacket(packet);
-	
-		//socket 찾아서 ESTAB로 바꾼다.
-		break;
+			struct Sockmeta *tempsocket;
+			tempsocket = mysocket->acceptqueue.front();
+			mysocket->acceptqueue.pop();
+			tempsocket->connection = myconnect;
+			this->freePacket(packet);
+		
+			//socket 찾아서 ESTAB로 바꾼다.
+			break;
 	
 	}
 	/*
@@ -291,7 +293,7 @@ void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct s
 	printf("**syscall_bind fd : %d\n", sockfd);
 	//printf("**syscall_bind addreln : %d\n", addrlen);
 	//printf("**syscall_bind sa_family : %d\n", myaddr->sa_family);
-0
+
 	if(myaddr->sa_family==AF_INET){
 		struct sockaddr_in * myaddr_in=(struct sockaddr_in *) myaddr;
 		sa_family_t	sin_family = myaddr_in->sin_family; 
@@ -416,13 +418,14 @@ void TCPAssignment::syscall_listen(UUID syscallUUID, int pid, int sockfd, int ba
 }
 
 void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
+	struct Sockmeta * mysocket;
 	for(int i=0;i<socketlist.size();i++){
-		if(socketlist[i].fd == sockfd){
-			struct Sockmeta * mysocket= socketlist[i];
+		if(socketlist[i]->fd == sockfd){
+			mysocket= socketlist[i];
 			break;
 		}
 	}
-	if(mysocket.estabqueue.empty()){
+	if(mysocket->estabqueue.empty()){
 		//새로운 큐를 만들고
 		//block
 	}
