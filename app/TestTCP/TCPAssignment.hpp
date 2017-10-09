@@ -46,6 +46,9 @@ struct Sockmeta{
 	enum State state;
 	struct Connection * connection;
 	int backlog;
+	UUID syscallUUID;
+	struct sockaddr * accept_addr;
+	socklen_t * accept_addrlen;
 	std::queue<Connection *> waitingqueue;
 	std::queue<Connection *> estabqueue;
 	std::queue<Sockmeta *> acceptqueue;
