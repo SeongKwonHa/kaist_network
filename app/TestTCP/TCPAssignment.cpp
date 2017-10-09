@@ -449,7 +449,41 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
 		}
 	}
 	printf("accept enter\n");
-	if(mysocket->estabqueue.empty()){
+	int fd =createFileDescriptor(pid);
+        if(pid<0){
+        	returnSystemCall(syscallUUID, -1);
+        }
+	
+        struct Sockmeta * newsocket = new struct Sockmeta;
+        newsocket->pid = pid;
+        newsocket->fd = fd;
+        newsocket->sin_family = 0;
+        newsocket->ip.s_addr = 0;
+        newsocket->port = 0;
+        newsocket->addrlen = 0;
+        newsocket->state = State::CLOSED;
+        socketlist.push_back(newsocket);
+        mysocket->acceptqueue.push(newsocket);
+	
+	if (!mysocket->estabqueue.empty()) {
+	struct Connection *tempconnect = mysocket->estabqueue.front();
+        mysocket->estabqueue.pop();
+        struct Sockmeta * getsocket = mysocket->acceptqueue.front();
+        mysocket->acceptqueue.pop();
+        getsocket->connection = tempconnect;
+        getsocket->sin_family = mysocket->sin_family;
+        getsocket->ip.s_addr = mysocket->ip.s_addr;
+        getsocket->port = mysocket->port;
+        getsocket->addrlen = mysocket->addrlen;
+        mysocket->state = State::LISTEN;
+        myaddr_in->sin_family = mysocket->sin_family;
+        myaddr_in->sin_port = mysocket->port;
+        myaddr_in->sin_addr = mysocket->ip;
+        *addrlen = mysocket->addrlen;
+        returnSystemCall(syscallUUID, getsocket->fd);
+                //estabqueu에서 꺼내온??
+	}
+	/*if(mysocket->acceptqueue.empty()){
 		int fd =createFileDescriptor(pid);
 		if(pid<0){
 			returnSystemCall(syscallUUID, -1);
@@ -486,7 +520,7 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
 		printf("accept empty else\n");
 		returnSystemCall(syscallUUID, getsocket->fd);
 		//estabqueu에서 꺼내온??
-	}
+	}*/
 }
 
 void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen){
