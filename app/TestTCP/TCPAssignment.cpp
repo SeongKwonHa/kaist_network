@@ -89,8 +89,156 @@ void TCPAssignment::systemCallback(UUID syscallUUID, int pid, const SystemCallPa
 	}
 }
 
-void TCPAssignment::packetArrived(std::string fromModule, Packet* packet)
-{
+void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
+	Packet* mypacket = this->clonePacket(packet);
+	uint32_t source[1];
+	packet->readData(14+12, source, 4);
+	uint32_t dest[1];
+	packet->readData(14+16, dest, 4);
+	uint16_t s_port[1];
+	packet->readData(14+20, s_port, 2);
+	uint16_t d_port[1];
+	packet->readData(14+22, d_port, 2);
+	uint32_t seq[1];
+	packet->readData(14+24, seq, 4);
+	uint32_t ack_seq[1];
+	packet->readData(14+28, ack_seq, 4);
+	uint8_t flag[1];
+	packet->readData(14+33, flag, 1);
+
+	uint8_t msg_seq[4];
+	msg_seq[0]=0;
+	msg_seq[1]=1;
+	msg_seq[2]=2;
+	msg_seq[3]=3;
+	
+	switch(*flag){
+		case 0x002:
+			//syn only
+			seq[0] = ntohl(htonl(seq[0])+1);
+			flag[0] = 0x012;
+			mypacket->writeData(14+12, dest, 4);
+			mypacket->writeData(14+16, source, 4);
+			mypacket->writeData(14+20, d_port, 2);
+			mypacket->writeData(14+22, s_port, 2);
+			mypacket->writeData(14+24, msg_seq, 4);
+			mypacket->writeData(14+28, seq, 4);
+			mypacket->writeData(14+33, flag, 1);
+			struct Sockmeta mysocket;
+			int result =0;
+			for(int i=0;i<socketlist.size();i++){
+				if(socketlist[i].port == *s_port && socketlist[i].ip == *source){
+					mysocket = socketlist[i];
+					result = 1;
+					break;
+				}
+			}
+			if(result==0){
+				this->freePacket(packet);
+				break;
+			}
+			mysocket->state = State::SYN_RCVD;
+			struct Connection *connect_info;
+			connect_info->dest = dest;
+			connect_info->source = source;
+			connect_info->d_port = d_port;
+			connect_info->s_port = s_port;
+			if(mysocket->waitingqueue.size()==mysocket.backlog){
+				this->freePacket(packet);
+			}else{
+				mysocket->waitingqueue.push_back(connect_info);
+				this->sendPacket(fromModule,mypacket);
+				this->freePacket(packet);
+			}
+			
+			break;
+
+		case 0x012:
+		//syn+ack
+		seq[0] = ntohl(htonl(seq[0])+1);
+		flag[0] = 0x010;
+		mypacket->writeData(14+12, dest, 4);
+		mypacket->writeData(14+16, source, 4);
+		mypacket->writeData(14+20, d_port, 2);
+		mypacket->writeData(14+22, s_port, 2);
+		mypacket->writeData(14+24, msg_seq, 4);
+		mypacket->writeData(14+28, seq, 4);
+		mypacket->writeData(14+33, flag, 1);
+
+		struct Sockmeta mysocket;
+		int result =0;
+		for(int i=0;i<socketlist.size();i++){
+			if(socketlist[i].port == *s_port && socketlist[i].ip == *source){
+				mysocket = socketlist[i];
+				result = 1;
+				break;
+			}
+		}
+		if(result==0){
+			this->freePacket(packet);
+			break;
+		}
+		mysocket->state = State::ESTAB;
+		this->sendPacket(fromModule,mypacket);
+		this->freePacket(packet);
+		break;
+
+		case 0x010:
+		//ack
+		struct Sockmeta mysocket;
+		int result =0;
+		for(int i=0;i<socketlist.size();i++){
+			if(socketlist[i].port == *s_port && socketlist[i].ip == *source){
+				mysocket = socketlist[i];
+				result = 1;
+				break;
+			}
+		}
+		if(result==0){
+			this->freePacket(packet);
+			break;
+		}
+		mysocket->state = State::ESTAB;
+		struct Connection * myconnect = mysocket->waitingqueue.pop(connect_info);
+		mysocket->estabqueue.push_back(myconnect);
+
+		struct Sockmeta *tempsocket = mysocket->acceptueue.pop();
+		tempsocket->connection = myconnect;
+		this->freePacket(packet);
+	
+		//socket 찾아서 ESTAB로 바꾼다.
+		break;
+	
+	}
+	/*
+	printf("source: ");
+	for(int i=0; i<4;i++){
+		printf("%x", *(source+i));
+	}
+	printf("\n");
+	printf("dest: ");
+	for(int i=0; i<4;i++){
+		printf("%x", *(dest+i));
+	}
+	printf("\n");
+	printf("seq: ");
+	for(int i=0; i<4;i++){
+		printf("%x", *(seq+i));
+	}
+	printf("\n");
+	printf("ack_seq: ");
+	for(int i=0; i<4;i++){
+		printf("%x", *(ack_seq+i));
+	}
+	printf("\n");
+
+	for(int i=0;i<1;i++){
+		printf("flag: %x\n", *(flag+i));
+	}
+	printf("string : %s\n", fromModule.c_str());
+	*/
+
+	
 
 }
 
@@ -107,6 +255,7 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 		sockmeta->ip.s_addr = 0;
 		sockmeta->port = 0;
 		sockmeta->addrlen = 0;
+		sockmeta->state = State::CLOSED;
 		socketlist.push_back(sockmeta);
 		returnSystemCall(syscallUUID, fd);
 		//printf("syscall_socket fd : %d\n", fd);
@@ -142,7 +291,7 @@ void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct s
 	printf("**syscall_bind fd : %d\n", sockfd);
 	//printf("**syscall_bind addreln : %d\n", addrlen);
 	//printf("**syscall_bind sa_family : %d\n", myaddr->sa_family);
-
+0
 	if(myaddr->sa_family==AF_INET){
 		struct sockaddr_in * myaddr_in=(struct sockaddr_in *) myaddr;
 		sa_family_t	sin_family = myaddr_in->sin_family; 
@@ -246,23 +395,47 @@ void TCPAssignment::syscall_getsockname(UUID syscallUUID, int pid, int sockfd, s
 	}
 }
 
-void syscall_getsockname(UUID syscallUUID, int pid, int sockfd, struct sockaddr * name , socklen_t * namelen){
+void TCPAssignment::syscall_listen(UUID syscallUUID, int pid, int sockfd, int backlog){
+	int result = 0;
+	for(int i=0;socketlist.size();i++){
+		if(socketlist[i]->fd==sockfd){
+			socketlist[i]->state=State::LISTEN;
+			socketlist[i]->backlog = backlog;
+			result = 1;
+			break;
+		}
+	}
+	
+	if(result==0){
+		returnSystemCall(syscallUUID, -1);
+	}
+	else{
+		returnSystemCall(syscallUUID, 0);
+	}
 
 }
 
-void syscall_listen(UUID syscallUUID, int pid, int sockfd, int backlog){
+void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
+	for(int i=0;i<socketlist.size();i++){
+		if(socketlist[i].fd == sockfd){
+			struct Sockmeta * mysocket= socketlist[i];
+			break;
+		}
+	}
+	if(mysocket.estabqueue.empty()){
+		//새로운 큐를 만들고
+		//block
+	}
+	else{
+		//estabqueu에서 꺼내온??
+	}
+}
+
+void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen){
 
 }
 
-void syscall_accecpt(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
-
-}
-
-void syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen){
-
-}
-
-void syscall_getpeername(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
+void TCPAssignment::syscall_getpeername(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
 
 }
 
