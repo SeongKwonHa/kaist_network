@@ -115,11 +115,11 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 	struct Sockmeta * mysocket;
 	int result=0;
 	struct Connection *connect_info = new struct Connection;
-	printf("packetarrive enter\n");
+	//printf("packetarrive enter\n");
 	switch(*flag){
 		case 0x002:
 			//syn only
-			printf("packetarrive syn enter\n");
+			//printf("packetarrive syn enter\n");
 			seq[0] = ntohl(htonl(seq[0])+1);
 			flag[0] = 0x012;
 			mypacket->writeData(14+12, dest, 4);
@@ -176,7 +176,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 
 		case 0x012:
 		//syn+ack
-		printf("packetarrive syn+ack enter\n");
+		//printf("packetarrive syn+ack enter\n");
 			seq[0] = ntohl(htonl(seq[0])+1);
 			flag[0] = 0x010;
 			mypacket->writeData(14+12, dest, 4);
@@ -222,6 +222,26 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			myconnect = mysocket->waitingqueue.front();
 			mysocket->waitingqueue.pop();
 			mysocket->estabqueue.push(myconnect);
+
+			if(!mysocket->acceptqueue.empty()){
+				printf("enter here\n");
+				struct Connection *tempconnect = mysocket->estabqueue.front();
+				mysocket->estabqueue.pop();
+				struct Sockmeta * getsocket = mysocket->acceptqueue.front();
+				mysocket->acceptqueue.pop();
+				struct sockaddr_in * myaddr_in = (struct sockaddr_in *) getsocket->accept_addr;
+				getsocket->connection = tempconnect;
+				getsocket->sin_family = mysocket->sin_family;
+				getsocket->ip.s_addr = mysocket->ip.s_addr;
+				getsocket->port = mysocket->port;
+				getsocket->addrlen = mysocket->addrlen;
+				mysocket->state = State::LISTEN;
+				myaddr_in->sin_family = mysocket->sin_family;
+				myaddr_in->sin_port = mysocket->port;
+				myaddr_in->sin_addr = mysocket->ip;
+				*(getsocket->accept_addrlen) = mysocket->addrlen;
+				returnSystemCall(getsocket->syscallUUID, getsocket->fd);
+			}
 
 			//struct Sockmeta *tempsocket;
 			//tempsocket = mysocket->acceptqueue.front();
@@ -461,12 +481,15 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
         newsocket->ip.s_addr = 0;
         newsocket->port = 0;
         newsocket->addrlen = 0;
-        newsocket->state = State::CLOSED;
+		newsocket->state = State::CLOSED;
+		newsocket->accept_addr = addr;
+		newsocket->accept_addrlen = addrlen;
+		newsocket->syscallUUID = syscallUUID;
         socketlist.push_back(newsocket);
         mysocket->acceptqueue.push(newsocket);
 	
 	if (!mysocket->estabqueue.empty()) {
-	struct Connection *tempconnect = mysocket->estabqueue.front();
+		struct Connection *tempconnect = mysocket->estabqueue.front();
         mysocket->estabqueue.pop();
         struct Sockmeta * getsocket = mysocket->acceptqueue.front();
         mysocket->acceptqueue.pop();
@@ -521,6 +544,7 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
 		returnSystemCall(syscallUUID, getsocket->fd);
 		//estabqueu에서 꺼내온??
 	}*/
+	printf("accept end\n");
 }
 
 void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen){
