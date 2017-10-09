@@ -136,8 +136,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			uint8_t tempsum[20];
 			mypacket->readData(14+20, tempsum, 20);
 			uint16_t checksum[1];
-			checksum[0] = (~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20));
-			printf("checksum : %x\n", checksum[0]);
+			checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
+			//printf("checksum : %x\n", checksum[0]);
 			mypacket->writeData(14+36, checksum, 2);
 
 			
@@ -490,7 +490,7 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
 }
 
 void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen){
-
+	printf("connect enter\n");
 }
 
 void TCPAssignment::syscall_getpeername(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
