@@ -311,7 +311,7 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 	//어디 테이블에서 pid에 알맞는 소켓을 찾아 없애야할듯
 	int result = 0;
 	for(int i=0;socketlist.size();i++){
-		if(socketlist[i]->fd==sockfd){
+		if(socketlist[i]->fd==sockfd&&socketlist[i]->pid==pid){
 			delete socketlist[i];
 			socketlist.erase(socketlist.begin()+i);
 			result = 1;
@@ -342,6 +342,7 @@ void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct s
 		struct in_addr ip = myaddr_in->sin_addr;
 		printf("**syscall_bind port : %d\n", port);
 		printf("**syscall_bind ip : %d\n", ip.s_addr);
+		printf("**syscall_bind pid: %d\n",pid);
 
 		//이미 있는 socket들 중에서 bind rule을 점검
 		//testcase에서는 1)같은 fd에 두번 bind하는 것 하나과 2)다른 fd지만 overlap 조건
@@ -352,21 +353,25 @@ void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct s
 			//printf("ip_test: %d, input ip:%d, listip:%d\n", (socketlist[i]->ip.s_addr == INADDR_ANY), ip.s_addr, socketlist[i]->ip.s_addr);
 			if((port == socketlist[i]->port)&&(socketlist[i]->ip.s_addr == INADDR_ANY)){
 				//2)조건
+				//printf("pass1\n");
 				returnSystemCall(syscallUUID, -1);
 				return;
 			}
 			if((port == socketlist[i]->port)&&(ip.s_addr == INADDR_ANY)){
 				//2)조건
+				//printf("pass2\n");
 				returnSystemCall(syscallUUID, -1);
 				return;
 			}
 			if((port == socketlist[i]->port)&&(ip.s_addr == socketlist[i]->ip.s_addr)){
 				//2)조건
+				//printf("pass3\n");
 				returnSystemCall(syscallUUID, -1);
 				return;
 			}
-			if((socketlist[i]->fd==sockfd)&&(socketlist[i]->sin_family != 0)){
+			if((socketlist[i]->fd==sockfd)&&(socketlist[i]->sin_family != 0)&&(socketlist[i]->pid==pid)){
 				//1)조건
+				//printf("pass4\n");
 				returnSystemCall(syscallUUID, -1);
 				return;
 			}
@@ -375,7 +380,8 @@ void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct s
 		//overlap 점검 통과 후
 		int result = 0;
 		for(int i=0;i<socketlist.size();i++){
-			if(socketlist[i]->fd==sockfd){
+			if(socketlist[i]->fd==sockfd&&socketlist[i]->pid==pid){
+				socketlist[i]->pid == pid;
 				socketlist[i]->sin_family = sin_family;
 				socketlist[i]->port = port;
 				socketlist[i]->ip.s_addr = ip.s_addr;
@@ -416,7 +422,7 @@ void TCPAssignment::syscall_getsockname(UUID syscallUUID, int pid, int sockfd, s
 	struct sockaddr_in * myaddr_in=(struct sockaddr_in *) myaddr;
 	int result = 0;
 	for(int i=0;socketlist.size();i++){
-		if(socketlist[i]->fd==sockfd){
+		if(socketlist[i]->fd==sockfd&&socketlist[i]->pid==pid){
 			myaddr_in->sin_family = socketlist[i]->sin_family;
 			myaddr_in->sin_port = socketlist[i]->port;
 			myaddr_in->sin_addr = socketlist[i]->ip;
@@ -441,7 +447,7 @@ void TCPAssignment::syscall_getsockname(UUID syscallUUID, int pid, int sockfd, s
 void TCPAssignment::syscall_listen(UUID syscallUUID, int pid, int sockfd, int backlog){
 	int result = 0;
 	for(int i=0;socketlist.size();i++){
-		if(socketlist[i]->fd==sockfd){
+		if(socketlist[i]->fd==sockfd&&socketlist[i]->pid==pid){
 			socketlist[i]->state=State::LISTEN;
 			socketlist[i]->backlog = backlog;
 			result = 1;
@@ -463,7 +469,7 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
 	struct Sockmeta * mysocket;
 	struct sockaddr_in * myaddr_in=(struct sockaddr_in *) addr;
 	for(int i=0;i<socketlist.size();i++){
-		if(socketlist[i]->fd == sockfd){
+		if(socketlist[i]->fd == sockfd&&socketlist[i]->pid==pid){
 			mysocket= socketlist[i];
 			break;
 		}
