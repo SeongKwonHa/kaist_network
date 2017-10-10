@@ -309,11 +309,13 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 
 void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 	//어디 테이블에서 pid에 알맞는 소켓을 찾아 없애야할듯
+	struct Sockmeta * mysocket;
 	int result = 0;
+	int index = 0;
 	for(int i=0;socketlist.size();i++){
 		if(socketlist[i]->fd==sockfd&&socketlist[i]->pid==pid){
-			delete socketlist[i];
-			socketlist.erase(socketlist.begin()+i);
+			mysocket = socketlist[i];
+			index = i;
 			result = 1;
 			break;
 		}
@@ -322,8 +324,13 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 		returnSystemCall(syscallUUID, -1);
 	}
 	else{
+		//여기는 일반적인 경우.
+		delete mysocket;
+		socketlist.erase(socketlist.begin()+index);
 		removeFileDescriptor(pid, sockfd);
 		returnSystemCall(syscallUUID, 0);
+		//여기부터 close connection?
+		//TODO
 		//printf("syscall_close fd : %d\n", sockfd);
 	}
 }
@@ -555,10 +562,52 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
 
 void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen){
 	printf("connect enter\n");
+	struct Sockmeta * mysocket;
+	struct sockaddr_in * myaddr_in=(struct sockaddr_in *) addr;
+	int result = 0;
+	for(int i=0;socketlist.size();i++){
+		if(socketlist[i]->fd==sockfd&&socketlist[i]->pid==pid){
+			mysocket = socketlist[i];
+			result = 1;
+			break;
+		}
+	}
+	if(result==0){
+		returnSystemCall(syscallUUID, -1);
+		printf("**syscall_getpeername fail\n");
+	}
+	else{
+		returnSystemCall(syscallUUID, 0);
+		printf("**syscall_getpeername success\n");
+	}
+	//소켓 다시 보내야함.
+	//bind에 대해 체크해야한다는데, 어떻게??
+	//(socketlist[i]->sin_family != 0)이거 바인드 했는지 체크인데 이걸로 할수있으면하면된다.
+	//이걸로 안되면 바인드한거 모으는 리스트를 따로 만들어야할듯!
 }
 
 void TCPAssignment::syscall_getpeername(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen){
-
+	printf("getpeername enter\n");
+	struct sockaddr_in * myaddr_in=(struct sockaddr_in *) addr;
+	int result = 0;
+	for(int i=0;socketlist.size();i++){
+		if(socketlist[i]->fd==sockfd&&socketlist[i]->pid==pid){
+			myaddr_in->sin_addr.s_addr = socketlist[i]->ip.s_addr;
+			myaddr_in->sin_port = socketlist[i]->port;
+			myaddr_in->sin_family = socketlist[i]->sin_family;
+			*addrlen = socketlist[i]->addrlen;
+			result = 1;
+			break;
+		}
+	}
+	if(result==0){
+		returnSystemCall(syscallUUID, -1);
+		printf("**syscall_getpeername fail\n");
+	}
+	else{
+		returnSystemCall(syscallUUID, 0);
+		printf("**syscall_getpeername success\n");
+	}
 }
 
 
