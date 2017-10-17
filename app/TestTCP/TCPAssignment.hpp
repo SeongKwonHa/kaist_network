@@ -43,6 +43,10 @@ struct Sockmeta{
 	unsigned short int port;
 	struct in_addr ip;
 	socklen_t addrlen;
+	sa_family_t d_sin_family;
+	unsigned short int d_port;
+	struct in_addr d_ip;
+	socklen_t d_addrlen;
 	enum State state;
 	struct Connection * connection;
 	int backlog;
