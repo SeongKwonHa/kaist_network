@@ -230,6 +230,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				}
 			}
 			if(result==0){
+				printf("no pakcet\n");
 				this->freePacket(packet);
 				break;
 			}
@@ -257,6 +258,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				myaddr_in->sin_addr = mysocket->ip;
 				*(getsocket->accept_addrlen) = mysocket->addrlen;
 				returnSystemCall(getsocket->syscallUUID, getsocket->fd);
+				printf("0x010 getsocket:%d\n",getsocket->fd);
 			}
 
 			//struct Sockmeta *tempsocket;
@@ -589,15 +591,29 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
 		}
 	}
 	
-	E::RoutingInfo routinginfo;
+	if(mysocket->sin_family == 0) {
+	//E::RoutingInfo routinginfo;
 	int interface_index = 0;
-	interface_index = routinginfo.getRoutingTable((uint8_t *)myaddr_in->sin_addr.s_addr);
+	uint8_t temp_addr[4];
+	for (int i=0; i<4; i++) {
+		temp_addr[i] = myaddr_in->sin_addr.s_addr & 0xff;
+		myaddr_in->sin_addr.s_addr >>= 8;
+	}
+/*
+	memcpy((void *)temp_addr[0],&(myaddr_in->sin_addr.s_addr), 1); 
+	memcpy((void *)temp_addr[1],&(myaddr_in->sin_addr.s_addr)+1, 1);
+	memcpy((void *)temp_addr[2],&(myaddr_in->sin_addr.s_addr)+2, 1);
+	memcpy((void *)temp_addr[3],&(myaddr_in->sin_addr.s_addr)+3, 1);
+*/
+	interface_index = this->getHost()->getRoutingTable(temp_addr);
+	printf("interface:%d\n",interface_index);
 	uint8_t ip_buffer[1];
 	ip_buffer[0] = 0;
 	bool routing_result = false;
-	routing_result = routinginfo.getIPAddr(ip_buffer, interface_index);
-
-	if(mysocket->sin_family == 0) {
+	routing_result = this->getHost()->getIPAddr(ip_buffer, interface_index);
+	printf("routngresult:%d\n",routing_result);
+	printf("ip_addr:%x\n", ip_buffer[0]);
+		printf("binding enter\n");
 		int result = 0;
 		uint16_t port = 0;
 		while (result == 0) {
@@ -612,13 +628,13 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
 				result = 1;
 			}
 		}
-		mysocket->pid == pid; 
+		mysocket->pid = pid; 
         	mysocket->sin_family = AF_INET;
         	mysocket->port = htons(port);
         	mysocket->ip.s_addr = htonl(ip_buffer[0]);
         	mysocket->addrlen = sizeof(struct sockaddr_in);
 	}
-	printf("source port: %d\n", mysocket->port);
+	printf("source port: %d\n", htons(mysocket->port));
 
 	sa_family_t sin_family = myaddr_in->sin_family;
         unsigned short int port = myaddr_in->sin_port;
@@ -633,7 +649,7 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
 	
 	Packet* mypacket = this->allocatePacket(54);
 	uint32_t source[1];
-	source[0] = htonl(ip_buffer[0]);
+	source[0] = mysocket->ip.s_addr;
 	uint32_t dest[1];
 	dest[0] = ip.s_addr;
 	uint16_t d_port[1];
