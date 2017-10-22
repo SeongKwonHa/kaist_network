@@ -108,9 +108,9 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 
 	uint8_t msg_seq[4];
 	msg_seq[0]=0;
-	msg_seq[1]=1;
-	msg_seq[2]=2;
-	msg_seq[3]=3;
+	msg_seq[1]=0;
+	msg_seq[2]=0;
+	msg_seq[3]=1;
 	
 	struct Sockmeta * mysocket;
 	int result=0;
@@ -120,9 +120,23 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 	//printf("packetarrive enter\n");
 	switch(*flag){
 		case 0x001:
-
-
+			printf("packetarrived fin endter\n");
+			printf("socketlist size: %d\n",socketlist.size());
 			for(int i=0;i<socketlist.size();i++){
+			/*	printf("find socket\n");			
+				printf("socketlist port : %x\n",socketlist[i]->port);
+				printf("socketlist ipaddr : %x\n",socketlist[i]->ip.s_addr);
+				printf("packet port : %x\n",d_port[0]);
+				printf("packet ipaddr : %x\n",dest[0]);
+				printf("socketlist dest port: %x\n",socketlist[i]->d_port);
+				printf("socketlist dest ipaddr : %x\n",socketlist[i]->d_ip.s_addr);
+				printf("pakcet source port : %x\n", s_port[0]);
+				printf("pakcet source ipaddr: %x\n", source[0]);	
+			*/	
+				/*if((socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == dest[0] && socketlist[i]->d_port == s_port[0] && socketlist[i]->d_ip.s_addr == source[0])||(socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == INADDR_ANY && socketlist[i]->d_port == s_port[0] && socketlist[i]->d_ip.s_addr == source[0])){
+			*/
+	
+				
 				if((socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == dest[0])||(socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == INADDR_ANY)){
 					mysocket = socketlist[i];
 					index = i;
@@ -131,10 +145,11 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				}
 			}
 			if(result==0){
+				printf("no socket\n");
 				this->freePacket(packet);
 				break;
 			}
-			if(mysocket->state == State::ESTAB){
+			if(mysocket->state == State::ESTAB /*&& mysocket->state == State::LAST_ACK*/){
 				seq[0] = ntohl(htonl(seq[0])+1);
 				flag[0] = 0x010;
 				mypacket->writeData(14+12, dest, 4);
@@ -154,9 +169,12 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
 				//printf("checksum : %x\n", checksum[0]);
 				mypacket->writeData(14+36, checksum, 2);
-	
-				mysocket->state = State::CLOSE_WAIT;
-				
+				//if (mysocket->state == State::ESTAB) {
+					mysocket->state = State::CLOSE_WAIT;
+				//} else {
+				//	mysocket->state = State::LAST_ACK;
+				//}
+				printf("socket_close_wait\n");
 				
 				this->sendPacket(fromModule.c_str(),mypacket);
 				this->freePacket(packet);
@@ -164,8 +182,13 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				break;
 		
 			}
-			else if(mysocket->state == State::FIN_WAIT_2){
-				mysocket->state = State::TIMED_WAIT;
+			else if(mysocket->state == State::FIN_WAIT_2/* && mysocket->state == State::ESTAB*/){
+				//if (mysocket->state == State::ESTAB) {
+				//	mysocket->state = State::CLOSE_WAIT;
+				//} else {
+					mysocket->state = State::TIMED_WAIT;
+				//}
+				printf("socket_time_wait\n");
 				seq[0] = ntohl(htonl(seq[0])+1);
 				flag[0] = 0x010;
 				mypacket->writeData(14+12, dest, 4);
@@ -199,7 +222,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				break;
 
 			}
-
+			break;
 		case 0x002:
 			//syn only
 			printf("packetarrive syn enter\n");
@@ -225,7 +248,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 
 			
 			for(int i=0;i<socketlist.size();i++){
-				/*
+				/*	
 				printf("socketlist port : %x\n",socketlist[i]->port);
 				printf("socketlist ipaddr : %x\n",socketlist[i]->ip.s_addr);
 				printf("packet port : %x\n",d_port[0]);
@@ -237,7 +260,15 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					break;
 				}
 			}
+		
+			printf("packet s_ipaddr : %x\n",source[0]);
+			printf("packet s_port : %d\n", s_port[0]);	
 			if(result==0){
+				this->freePacket(packet);
+				break;
+			}
+			printf("server state: %d\n", mysocket->state);
+			if (mysocket->state == State::ESTAB) {
 				this->freePacket(packet);
 				break;
 			}
@@ -247,9 +278,13 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			connect_info->source[0] = source[0];
 			connect_info->d_port[0] = d_port[0];
 			connect_info->s_port[0] = s_port[0];
-			if(mysocket->waitingqueue.size()==mysocket->backlog){
+			printf("wating size: %d\n", mysocket->waitingqueue.size());	
+			printf("estab size: %d\n", mysocket->estabqueue.size());
+			if(mysocket->waitingqueue.size() >=mysocket->backlog){
 				this->freePacket(packet);
 			}else{
+				printf("rcvdin\n");
+				printf("state: %d\n", mysocket->state);
 				mysocket->waitingqueue.push(connect_info);
 				this->sendPacket(fromModule.c_str(),mypacket);
 				this->freePacket(packet);
@@ -260,7 +295,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			break;
 
 		case 0x012:
-		//syn+ack
+		//syn+ac/
 		printf("packetarrive syn+ack enter\n");
 			seq[0] = ntohl(htonl(seq[0])+1);
 			flag[0] = 0x010;
@@ -268,7 +303,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			mypacket->writeData(14+16, source, 4);
 			mypacket->writeData(14+20, d_port, 2);
 			mypacket->writeData(14+22, s_port, 2);
-			mypacket->writeData(14+24, msg_seq, 4);
+			mypacket->writeData(14+24, ack_seq, 4);
 			mypacket->writeData(14+28, seq, 4);
 			mypacket->writeData(14+33, flag, 1);
 
@@ -310,7 +345,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					mysocket = socketlist[i];
 					index = i;
 					result = 1;
-					break;
+					break;					
 				}
 			}
 			if(result==0){
@@ -318,14 +353,16 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				this->freePacket(packet);
 				break;
 			}
-			//printf("pass1\n");
+			printf("state: %d\n",mysocket->state);
+			printf("pass1\n");
 			if(mysocket->state == State::FIN_WAIT_1){
 				mysocket->state = State::FIN_WAIT_2;
-				//printf("pass2\n");
+				this->freePacket(packet);
+				printf("pass2\n");
 				break;
 			}
 			else if(mysocket->state == State::LAST_ACK){
-				//printf("pass3\n");
+				printf("pass3\n");
 				mysocket->state = State::CLOSED;
 				delete mysocket;
 				socketlist.erase(socketlist.begin()+index);
@@ -334,13 +371,16 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				break;
 			}
 			else if(mysocket->state == State::SYN_RCVD){
-				//printf("pass4\n");
-				mysocket->state = State::ESTAB;
+				printf("pass4\n");
+				printf("qeueue size: %d\n", mysocket->waitingqueue.size());
+				if (mysocket->waitingqueue.size()==1) {
+					mysocket->state = State::ESTAB;
+				}
 				struct Connection * myconnect;
 				myconnect = mysocket->waitingqueue.front();
 				mysocket->waitingqueue.pop();
 				mysocket->estabqueue.push(myconnect);
-	
+				printf("push\n");
 				if(!mysocket->acceptqueue.empty()){
 					printf("enter here\n");
 					struct Connection *tempconnect = mysocket->estabqueue.front();
@@ -348,11 +388,15 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					struct Sockmeta * getsocket = mysocket->acceptqueue.front();
 					mysocket->acceptqueue.pop();
 					struct sockaddr_in * myaddr_in = (struct sockaddr_in *) getsocket->accept_addr;
-					getsocket->connection = tempconnect;
+					//getsocket->connection = tempconnect;
 					getsocket->sin_family = mysocket->sin_family;
 					getsocket->ip.s_addr = mysocket->ip.s_addr;
 					getsocket->port = mysocket->port;
 					getsocket->addrlen = mysocket->addrlen;
+					getsocket->d_ip.s_addr = tempconnect->source[0];
+        				getsocket->d_port = tempconnect->s_port[0];
+					//getsocket->state = State::ESTAB;
+					
 					mysocket->state = State::LISTEN;
 					myaddr_in->sin_family = mysocket->sin_family;
 					myaddr_in->sin_port = mysocket->port;
@@ -446,6 +490,7 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 	}
 	else{
 		if(mysocket->state == State::ESTAB){
+			printf("close estab enter\n");
 			Packet* mypacket = this->allocatePacket(54);
 			mysocket->state = State::FIN_WAIT_1;
 			uint32_t source[1];
@@ -467,7 +512,7 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			msg_seq[2]=2;
 			msg_seq[3]=3;
 			
-	;		//printf("FIN enter\n")
+			//printf("FIN enter\n")
 			flag[0] = 0x001;
 			mypacket->writeData(14+12, source, 4);
 			mypacket->writeData(14+16, dest, 4);
@@ -488,7 +533,8 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			this->sendPacket("IPv4",mypacket);
 		}
 		else if(mysocket->state == State::CLOSE_WAIT){
-			Packet* mypacket;
+			printf("close wait endter\n");
+			Packet* mypacket = this->allocatePacket(54);
 			mysocket->state = State::LAST_ACK;
 			uint32_t source[1];
 			source[0] = mysocket->ip.s_addr;
@@ -509,7 +555,7 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			msg_seq[2]=2;
 			msg_seq[3]=3;
 			
-	;		//printf("FIN enter\n")
+			//printf("FIN enter\n")
 			flag[0] = 0x001;
 			mypacket->writeData(14+12, dest, 4);
 			mypacket->writeData(14+16, source, 4);
@@ -531,6 +577,7 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			
 		}
 		else{
+			//printf("socket_removed\n");
 			delete mysocket;
 			socketlist.erase(socketlist.begin()+index);
 			removeFileDescriptor(pid, sockfd);
@@ -717,17 +764,22 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
         socketlist.push_back(newsocket);
         mysocket->acceptqueue.push(newsocket);
 	
+		
 	if (!mysocket->estabqueue.empty()) {
 		struct Connection *tempconnect = mysocket->estabqueue.front();
        		mysocket->estabqueue.pop();
         	struct Sockmeta * getsocket = mysocket->acceptqueue.front();
         	mysocket->acceptqueue.pop();
-        	getsocket->connection = tempconnect;
+        	//getsocket->connection = tempconnect;
         	getsocket->sin_family = mysocket->sin_family;
         	getsocket->ip.s_addr = mysocket->ip.s_addr;
         	getsocket->port = mysocket->port;
         	getsocket->addrlen = mysocket->addrlen;
-        	mysocket->state = State::LISTEN;
+		getsocket->d_ip.s_addr = tempconnect->source[0];
+        	getsocket->d_port = tempconnect->s_port[0];
+		//getsocket->state = State::ESTAB;	
+	
+		mysocket->state = State::LISTEN;
         	myaddr_in->sin_family = mysocket->sin_family;
         	myaddr_in->sin_port = mysocket->port;
         	myaddr_in->sin_addr = mysocket->ip;
@@ -790,27 +842,33 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
 	}
 	
 	if(mysocket->sin_family == 0) {
-	//E::RoutingInfo routinginfo;
-	int interface_index = 0;
-	uint8_t temp_addr[4];
-	for (int i=0; i<4; i++) {
-		temp_addr[i] = myaddr_in->sin_addr.s_addr & 0xff;
-		myaddr_in->sin_addr.s_addr >>= 8;
-	}
-/*
-	memcpy((void *)temp_addr[0],&(myaddr_in->sin_addr.s_addr), 1); 
-	memcpy((void *)temp_addr[1],&(myaddr_in->sin_addr.s_addr)+1, 1);
-	memcpy((void *)temp_addr[2],&(myaddr_in->sin_addr.s_addr)+2, 1);
-	memcpy((void *)temp_addr[3],&(myaddr_in->sin_addr.s_addr)+3, 1);
-*/
-	interface_index = this->getHost()->getRoutingTable(temp_addr);
-	printf("interface:%d\n",interface_index);
-	uint8_t ip_buffer[1];
-	ip_buffer[0] = 0;
-	bool routing_result = false;
-	routing_result = this->getHost()->getIPAddr(ip_buffer, interface_index);
-	printf("routngresult:%d\n",routing_result);
-	printf("ip_addr:%x\n", ip_buffer[0]);
+		//E::RoutingInfo routinginfo;
+		int interface_index = 0;
+		uint8_t temp_addr[4];
+		uint32_t d_ip_addr = myaddr_in->sin_addr.s_addr;
+		for (int i=0; i<4; i++) {
+			temp_addr[3-i] = d_ip_addr & 0xff;
+			d_ip_addr >>= 8;
+		}
+		/*
+		memcpy((void *)temp_addr[0],&(myaddr_in->sin_addr.s_addr), 1); 
+		memcpy((void *)temp_addr[1],&(myaddr_in->sin_addr.s_addr)+1, 1);
+		memcpy((void *)temp_addr[2],&(myaddr_in->sin_addr.s_addr)+2, 1);
+		memcpy((void *)temp_addr[3],&(myaddr_in->sin_addr.s_addr)+3, 1);
+		*/
+		interface_index = this->getHost()->getRoutingTable(temp_addr);
+		printf("interface:%d\n",interface_index);
+		uint8_t ip_buffer[4];
+		//ip_buffer[0] = 0;
+		bool routing_result = false;
+		routing_result = this->getHost()->getIPAddr(ip_buffer, interface_index);
+		uint32_t ip;
+		ip = ip_buffer[0] << 24;
+		ip += ip_buffer[1] << 16;
+		ip += ip_buffer[2] << 8;
+		ip += ip_buffer[3] << 0;
+		printf("routngresult:%d\n",routing_result);
+		printf("ip_addr:%x\n", ip_buffer[0]);
 		printf("binding enter\n");
 		int result = 0;
 		uint16_t port = 0;
@@ -829,7 +887,7 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
 		mysocket->pid = pid; 
         	mysocket->sin_family = AF_INET;
         	mysocket->port = htons(port);
-        	mysocket->ip.s_addr = htonl(ip_buffer[0]);
+        	mysocket->ip.s_addr = htonl(ip);
         	mysocket->addrlen = sizeof(struct sockaddr_in);
 	}
 	printf("source port: %d\n", htons(mysocket->port));
@@ -860,13 +918,19 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
         msg_seq[0] = 0;
 	uint8_t flag[1];
 	flag[0] = 0x002;
+	uint8_t header_length[1];
+ 	header_length[0] = 80;
+ 	uint16_t window_size[1];
+ 	window_size[0]= htons(51200);
 	mypacket->writeData(14+12, source, 4);
         mypacket->writeData(14+16, dest, 4);
         mypacket->writeData(14+20, s_port, 2);
         mypacket->writeData(14+22, d_port, 2);
         mypacket->writeData(14+24, seq, 4);
         mypacket->writeData(14+28, msg_seq, 4);
-        mypacket->writeData(14+33, flag, 1);
+        mypacket->writeData(14+32, header_length, 1);
+	mypacket->writeData(14+33, flag, 1);
+	mypacket->writeData(14+34, window_size, 2);
 	
 	uint16_t initzero[1];
 	initzero[0] = 0;
