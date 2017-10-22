@@ -33,7 +33,12 @@ enum State{
 	CLOSED,
 	SYN_SENT,
 	SYN_RCVD,
-	ESTAB
+	ESTAB,//5
+	CLOSE_WAIT, //6
+	LAST_ACK, //7
+	FIN_WAIT_1, //8
+	FIN_WAIT_2, //9
+	TIMED_WAIT
 };
 
 struct Sockmeta{
