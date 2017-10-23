@@ -28,6 +28,14 @@ struct Connection{
 	uint16_t d_port[1];
 };
 
+struct AcceptInfo{
+	int pid;
+	int fd;
+	struct sockaddr * addr;
+	socklen_t * addrlen;
+	UUID syscallUUID;
+};
+
 enum State{
 	LISTEN,
 	CLOSED,
@@ -58,9 +66,9 @@ struct Sockmeta{
 	UUID syscallUUID;
 	struct sockaddr * accept_addr;
 	socklen_t * accept_addrlen;
-	std::queue<Connection *> waitingqueue;
-	std::queue<Connection *> estabqueue;
-	std::queue<Sockmeta *> acceptqueue;
+	std::queue<Sockmeta *> waitingqueue;
+	std::queue<Sockmeta *> estabqueue;
+	std::queue<AcceptInfo *> acceptqueue;
 };
 
 class TCPAssignment : public HostModule, public NetworkModule, public SystemCallInterface, private NetworkLog, private TimerModule
