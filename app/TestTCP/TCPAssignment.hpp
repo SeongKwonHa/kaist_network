@@ -97,7 +97,8 @@ protected:
 	virtual void syscall_accept(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen);
 	virtual void syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 	virtual void syscall_getpeername(UUID syscallUUID, int pid, int sockfd, struct sockaddr *addr, socklen_t *addrlen);
-
+	virtual void syscall_read(UUID syscallUUID, int pid, int fd, void *buf, size_t count);
+	virtual void syscall_write(UUID syscallUUID, int pid, int fd, const void *buf, size_t count);
 
 
 };

@@ -52,10 +52,10 @@ void TCPAssignment::systemCallback(UUID syscallUUID, int pid, const SystemCallPa
 		this->syscall_close(syscallUUID, pid, param.param1_int);
 		break;
 	case READ:
-		//this->syscall_read(syscallUUID, pid, param.param1_int, param.param2_ptr, param.param3_int);
+		this->syscall_read(syscallUUID, pid, param.param1_int, param.param2_ptr, param.param3_int);
 		break;
 	case WRITE:
-		//this->syscall_write(syscallUUID, pid, param.param1_int, param.param2_ptr, param.param3_int);
+		this->syscall_write(syscallUUID, pid, param.param1_int, param.param2_ptr, param.param3_int);
 		break;
 	case CONNECT:
 		this->syscall_connect(syscallUUID, pid, param.param1_int,
@@ -335,7 +335,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				this->freePacket(packet);
 			
 				mysocket->seqnum = ntohl(ack_seq[0]);
-				this->timerCallback(0);
+				//this->timerCallback(0);
 			        //기다리기
                                 mysocket->state = State::CLOSED;
                                 delete mysocket;
@@ -901,6 +901,15 @@ void TCPAssignment::syscall_getpeername(UUID syscallUUID, int pid, int sockfd, s
 		returnSystemCall(syscallUUID, 0);
 		//printf("**syscall_getpeername success\n");
 	}
+}
+
+void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, size_t count){
+	
+}
+
+
+void TCPAssignment::syscall_write(UUID syscallUUID, int pid, int fd, const void *buf, size_t count){
+
 }
 
 
