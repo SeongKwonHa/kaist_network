@@ -21,12 +21,12 @@
 
 namespace E
 {
-struct Connection{
+/*struct Connection{
 	uint32_t source[1];
 	uint32_t dest[1];
 	uint16_t s_port[1];
 	uint16_t d_port[1];
-};
+};*/
 
 struct AcceptInfo{
 	int pid;
@@ -61,11 +61,12 @@ struct Sockmeta{
 	struct in_addr d_ip;
 	socklen_t d_addrlen;
 	enum State state;
-	struct Connection * connection;
+	//struct Connection * connection;
 	int backlog;
+	uint32_t seqnum;
 	UUID syscallUUID;
-	struct sockaddr * accept_addr;
-	socklen_t * accept_addrlen;
+	//struct sockaddr * accept_addr;
+	//socklen_t * accept_addrlen;
 	std::queue<Sockmeta *> waitingqueue;
 	std::queue<Sockmeta *> estabqueue;
 	std::queue<AcceptInfo *> acceptqueue;
