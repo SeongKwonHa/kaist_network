@@ -21,12 +21,6 @@
 
 namespace E
 {
-/*struct Connection{
-	uint32_t source[1];
-	uint32_t dest[1];
-	uint16_t s_port[1];
-	uint16_t d_port[1];
-};*/
 
 struct AcceptInfo{
 	int pid;
@@ -34,6 +28,11 @@ struct AcceptInfo{
 	struct sockaddr * addr;
 	socklen_t * addrlen;
 	UUID syscallUUID;
+};
+
+struct ReadInfo{
+	void * read_buffer;
+	int count;
 };
 
 enum State{
@@ -61,15 +60,16 @@ struct Sockmeta{
 	struct in_addr d_ip;
 	socklen_t d_addrlen;
 	enum State state;
-	//struct Connection * connection;
 	int backlog;
 	uint32_t seqnum;
+	uint32_t ack_seqnum;
 	UUID syscallUUID;
-	//struct sockaddr * accept_addr;
-	//socklen_t * accept_addrlen;
 	std::queue<Sockmeta *> waitingqueue;
 	std::queue<Sockmeta *> estabqueue;
 	std::queue<AcceptInfo *> acceptqueue;
+	uint8_t read_buffer[51200];
+	int read_buffer_pointer;
+	struct ReadInfo * readInfo;
 };
 
 class TCPAssignment : public HostModule, public NetworkModule, public SystemCallInterface, private NetworkLog, private TimerModule

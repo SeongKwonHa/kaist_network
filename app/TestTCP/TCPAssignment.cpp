@@ -14,6 +14,16 @@
 #include <E/Networking/E_NetworkUtil.hpp>
 #include "TCPAssignment.hpp"
 
+#define MAX(a,b) \  
+({ __typeof__ (a) _a = (a); \  
+__typeof__ (b) _b = (b); \  
+_a > _b ? _a : _b; })  
+  
+#define MIN(a,b) \  
+({ __typeof__ (a) _a = (a); \  
+__typeof__ (b) _b = (b); \  
+_a < _b ? _a : _b; })  
+
 namespace E
 {
 
@@ -273,8 +283,6 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				break;
 			}
 
-			mysocket->seqnum = ntohl(ack_seq[0]);
-				
 			seq[0] = ntohl(htonl(seq[0])+1);
 			flag[0] = 0x010;
 			mypacket->writeData(14+12, dest, 4);
@@ -294,8 +302,10 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
 			mypacket->writeData(14+36, checksum, 2);
 
-	
+			mysocket->seqnum = ntohl(ack_seq[0]);
+			mysocket->ack_seqnum = ntohl(seq[0]);
 			mysocket->state = State::ESTAB;
+			
 			returnSystemCall(mysocket->syscallUUID,0);
 			this->sendPacket(fromModule.c_str(),mypacket);
 			
@@ -397,6 +407,23 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				this->freePacket(packet);
 				break;
 			}
+			else if(mysocket->state == State::ESTAB){	
+				mysocket->seqnum = ntohl(ack_seq[0]);
+				printf("packet enter\n");	
+				if (mysocket->readInfo->count>0) {
+					int data_length = MIN(packet->getSize(), mysocket->readInfo->count);
+					uint8_t data[data_length];
+					packet->readData(14+40, data, data_length);
+					memcpy(mysocket->readInfo->read_buffer,(void*)data[0],data_length);
+					returnSystemCall(mysocket->syscallUUID, data_length);
+				} else { 
+					int data_length = packet->getSize();
+					uint8_t data[data_length];
+					packet->readData(14+40, data, data_length);
+					memcpy((void*)mysocket->read_buffer[mysocket->read_buffer_pointer],data,data_length);
+					mysocket->read_buffer_pointer += data_length;
+				}
+			}
 			this->freePacket(packet);
 			break;
 			}
@@ -421,6 +448,7 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 		sockmeta->seqnum += fd;
 		sockmeta->backlog = 1;
 		sockmeta->syscallUUID = -1;
+		sockmeta->read_buffer_pointer = 0;
 		socketlist.push_back(sockmeta);
 		returnSystemCall(syscallUUID, fd);
 		//printf("syscall_socket fd : %d\n", fd);
@@ -904,18 +932,112 @@ void TCPAssignment::syscall_getpeername(UUID syscallUUID, int pid, int sockfd, s
 }
 
 void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, size_t count){
-	
+	struct Sockmeta * mysocket;
+	int result = 0;
+	for(int i=0;i<socketlist.size();i++){
+		if(socketlist[i]->fd==fd&&socketlist[i]->pid==pid){
+			mysocket = socketlist[i];
+			result = 1;
+			break;
+		}
+	}
+
+	if (mysocket->read_buffer_pointer>0) {
+		int data_length = MIN(mysocket->read_buffer_pointer, count);
+		memcpy(buf,(void*)mysocket->read_buffer[0],data_length);
+		memcpy(mysocket->read_buffer,(void*)mysocket->read_buffer[data_length],mysocket->read_buffer_pointer-data_length);
+		memset((void*)mysocket->read_buffer[mysocket->read_buffer_pointer-data_length],0,data_length);
+		mysocket->read_buffer_pointer = mysocket->read_buffer_pointer-data_length;
+		returnSystemCall(syscallUUID, data_length);
+	} else {
+		mysocket->syscallUUID = syscallUUID;
+		mysocket->readInfo->read_buffer = buf;
+		mysocket->readInfo->count = count;		
+	}
 }
 
 
 void TCPAssignment::syscall_write(UUID syscallUUID, int pid, int fd, const void *buf, size_t count){
+	struct Sockmeta * mysocket;
+	int result = 0;
+	for(int i=0;i<socketlist.size();i++){
+		if(socketlist[i]->fd==fd&&socketlist[i]->pid==pid){
+			mysocket = socketlist[i];
+			result = 1;
+			break;
+		}
+	}
+	
+	int data_length = MIN(512, count);
+	Packet* mypacket = this->allocatePacket(54+data_length);
+	mysocket->syscallUUID=syscallUUID;
+	int interface_index = 0;
+        uint8_t temp_addr[4];
+        uint32_t d_ip_addr = mysocket->d_ip.s_addr;
+        for (int i=0; i<4; i++) {
+		temp_addr[3-i] = d_ip_addr & 0xff;
+		d_ip_addr >>= 8;
+	}
+	interface_index = this->getHost()->getRoutingTable(temp_addr);
+        uint8_t ip_buffer[4];
+        bool routing_result = this->getHost()->getIPAddr(ip_buffer, interface_index);
+        uint32_t ip;
+        ip = ip_buffer[0] << 24;
+        ip += ip_buffer[1] << 16;
+        ip += ip_buffer[2] << 8;
+        ip += ip_buffer[3] << 0;
+				
+	//printf("source_ip: %x\n", mysocket->ip.s_addr);
+	uint32_t source[1];
+	source[0] = htonl(ip);
+	uint32_t dest[1];
+	dest[0] = mysocket->d_ip.s_addr;
+	uint16_t s_port[1];
+	s_port[0] = mysocket->port;
+	uint16_t d_port[1];
+	d_port[0] = mysocket->d_port;
+	uint32_t ack_seq[1];
+	ack_seq[0] = htonl(mysocket->ack_seqnum);
+	uint8_t flag[1];
+	flag[0] = 0x010;
+	uint8_t header_length[1];
+        header_length[0] = 80;
+        uint16_t window_size[1];
+        window_size[0]= htons(51200);
+	uint8_t data[data_length];
+	memcpy(data, buf, data_length);
 
+	uint32_t msg_seq[1];
+	msg_seq[0]= htonl(mysocket->seqnum);
+			
+	mypacket->writeData(14+12, source, 4);
+	mypacket->writeData(14+16, dest, 4);
+	mypacket->writeData(14+20, s_port, 2);
+	mypacket->writeData(14+22, d_port, 2);
+	mypacket->writeData(14+24, msg_seq, 4);
+	mypacket->writeData(14+28, ack_seq, 4);
+        mypacket->writeData(14+32, header_length, 1);
+	mypacket->writeData(14+33, flag, 1);
+        mypacket->writeData(14+34, window_size, 2);
+	mypacket->writeData(14+40, data, data_length);
+	uint16_t initzero[1];
+	initzero[0] = 0;
+	mypacket->writeData(14+36, initzero, 2);
+	uint8_t tempsum[20+data_length];
+	mypacket->readData(14+20, tempsum, 20+data_length);
+	uint16_t checksum[1];
+	checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20+data_length)));
+	mypacket->writeData(14+36, checksum, 2);
+	this->sendPacket("IPv4",mypacket);
+	
+	mysocket->seqnum += data_length;
+	returnSystemCall(syscallUUID, data_length);
 }
 
 
 void TCPAssignment::timerCallback(void* payload)
 {
-	UUID timer = E::TimerModule::addTimer(payload, 60000);
+//	UUID timer = E::TimerModule::addTimer(payload, 60000);
 }
 
 
