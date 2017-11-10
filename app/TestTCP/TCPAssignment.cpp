@@ -420,40 +420,40 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					memcpy(mysocket->readInfo->read_buffer, tempdata, data_length);
 					
 					Packet* mypacket = this->allocatePacket(54);
-					seq[0] = ntohl(htonl(seq[0])+data_length);
+					seq[0] = ntohl(htonl(seq[0])+packet->getSize()-54);
 					uint8_t header_length[1];
-        header_length[0] = 80;
-        uint16_t window_size[1];
-		window_size[0]= htons(51200);
+				        header_length[0] = 80;
+				        uint16_t window_size[1];
+					window_size[0]= htons(51200);
 		
-			flag[0] = 0x010;
-			mypacket->writeData(14+12, dest, 4);
-			mypacket->writeData(14+16, source, 4);
-			mypacket->writeData(14+20, d_port, 2);
-			mypacket->writeData(14+22, s_port, 2);
-			mypacket->writeData(14+24, ack_seq, 4);
-			mypacket->writeData(14+28, seq, 4);
-			mypacket->writeData(14+33, flag, 1);
-			mypacket->writeData(14+32, header_length, 1);
-        	mypacket->writeData(14+34, window_size, 2);
-			uint16_t initzero[1];
-			initzero[0] = 0;
-			mypacket->writeData(14+36, initzero, 2);
-			uint8_t tempsum[20];
-			mypacket->readData(14+20, tempsum, 20);
-			uint16_t checksum[1];
-			checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
-			mypacket->writeData(14+36, checksum, 2);
-			this->sendPacket("IPv4",mypacket);
-			
-
-			
-			
-			returnSystemCall(mysocket->syscallUUID, data_length);
-
-
-
+					flag[0] = 0x010;
+					mypacket->writeData(14+12, dest, 4);
+					mypacket->writeData(14+16, source, 4);
+					mypacket->writeData(14+20, d_port, 2);
+					mypacket->writeData(14+22, s_port, 2);
+					mypacket->writeData(14+24, ack_seq, 4);
+					mypacket->writeData(14+28, seq, 4);
+					mypacket->writeData(14+33, flag, 1);
+					mypacket->writeData(14+32, header_length, 1);
+			        	mypacket->writeData(14+34, window_size, 2);
+					uint16_t initzero[1];
+					initzero[0] = 0;
+					mypacket->writeData(14+36, initzero, 2);
+					uint8_t tempsum[20];
+					mypacket->readData(14+20, tempsum, 20);
+					uint16_t checksum[1];
+					checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
+					mypacket->writeData(14+36, checksum, 2);
+					this->sendPacket("IPv4",mypacket);
 					
+					if (packet->getSize()-54>data_length) {
+						int rest_data_length = packet->getSize()-54-data_length;
+						uint8_t * restdata = (uint8_t* )malloc(sizeof(uint8_t)*rest_data_length);
+						packet->readData(14+40+data_length, restdata, rest_data_length);
+						memcpy(&(mysocket->read_buffer[mysocket->read_buffer_pointer]),restdata, rest_data_length);
+						mysocket->read_buffer_pointer += rest_data_length;
+					}
+					returnSystemCall(mysocket->syscallUUID, data_length);	
 				} else { 
 					int data_length = packet->getSize();
 					uint8_t data[data_length];
@@ -986,13 +986,14 @@ void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, 
 		}
 	}
 	printf("enter read\n");
-
+	printf("count: %d\n", count);
 	if (mysocket->read_buffer_pointer>0) {
 		int data_length = MIN(mysocket->read_buffer_pointer, count);
 		memcpy(buf,&(mysocket->read_buffer[0]),data_length);
 		memcpy(mysocket->read_buffer,&(mysocket->read_buffer[data_length]),mysocket->read_buffer_pointer-data_length);
 		memset(&(mysocket->read_buffer[mysocket->read_buffer_pointer-data_length]),0,data_length);
 		mysocket->read_buffer_pointer = mysocket->read_buffer_pointer-data_length;
+		printf("buffer point: %d\n", mysocket->read_buffer_pointer);
 		returnSystemCall(syscallUUID, data_length);
 	} else {
 		printf("pass here\n");
