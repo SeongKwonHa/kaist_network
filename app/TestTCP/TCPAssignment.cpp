@@ -140,6 +140,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				break;
 			}
 			
+			
 			if(mysocket->state == State::ESTAB){		
 				mysocket->state = State::CLOSE_WAIT;
 				msg_seq[0] = htonl(mysocket->seqnum);
@@ -325,12 +326,22 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					break;					
 				}
 			}
+		
+			if (mysocket->state != State::SYN_RCVD) {	
+				for(int i=0;i<socketlist.size();i++) {
+					if((socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == dest[0] && socketlist[i]->d_port == s_port[0] && socketlist[i]->d_ip.s_addr == source[0])||(socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == INADDR_ANY && socketlist[i]->d_port == s_port[0] && socketlist[i]->d_ip.s_addr == source[0])){
+						mysocket = socketlist[i];
+						break;					
+					}
+				}
+			}
 
 			if(result==0){
-				//printf("no pakcet\n");
+				printf("no socket\n");
 				this->freePacket(packet);
 				break;
 			}
+
 	
 			if(mysocket->state == State::FIN_WAIT_1){
 				//printf("finwait_1 to 2\n");
@@ -392,9 +403,9 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					mysocket->state = State::LISTEN;
 				
 					struct sockaddr_in * myaddr_in = (struct sockaddr_in *) acceptinfo->addr;
-                    myaddr_in->sin_family = mysocket->sin_family;
-                    myaddr_in->sin_port = mysocket->port;
-                    myaddr_in->sin_addr = mysocket->ip;
+					myaddr_in->sin_family = mysocket->sin_family;
+                   			myaddr_in->sin_port = mysocket->port;
+                   			myaddr_in->sin_addr = mysocket->ip;
 					*(acceptinfo->addrlen) = mysocket->addrlen;
 					    
 					returnSystemCall(newsocket->syscallUUID, newsocket->fd);
@@ -807,7 +818,7 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
 	acceptinfo->addr = addr;
 	acceptinfo->addrlen = addrlen;
 	acceptinfo->syscallUUID = syscallUUID;
-    mysocket->acceptqueue.push(acceptinfo);
+	mysocket->acceptqueue.push(acceptinfo);
 		
 	if (!mysocket->estabqueue.empty()) {
 
@@ -820,7 +831,7 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
                 newsocket->pid = acceptinfo->pid;
                 newsocket->syscallUUID = acceptinfo->syscallUUID;		
 	
-                mysocket->state = State::LISTEN;
+                mysocket->state = State::ESTAB;
 
                 struct sockaddr_in * myaddr_in = (struct sockaddr_in *) acceptinfo->addr;
                 myaddr_in->sin_family = mysocket->sin_family;
@@ -986,14 +997,12 @@ void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, 
 		}
 	}
 	printf("enter read\n");
-	printf("count: %d\n", count);
 	if (mysocket->read_buffer_pointer>0) {
 		int data_length = MIN(mysocket->read_buffer_pointer, count);
 		memcpy(buf,&(mysocket->read_buffer[0]),data_length);
 		memcpy(mysocket->read_buffer,&(mysocket->read_buffer[data_length]),mysocket->read_buffer_pointer-data_length);
 		memset(&(mysocket->read_buffer[mysocket->read_buffer_pointer-data_length]),0,data_length);
 		mysocket->read_buffer_pointer = mysocket->read_buffer_pointer-data_length;
-		printf("buffer point: %d\n", mysocket->read_buffer_pointer);
 		returnSystemCall(syscallUUID, data_length);
 	} else {
 		printf("pass here\n");
