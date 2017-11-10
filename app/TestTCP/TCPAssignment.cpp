@@ -409,13 +409,51 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			}
 			else if(mysocket->state == State::ESTAB){	
 				mysocket->seqnum = ntohl(ack_seq[0]);
-				printf("packet enter, count : %d\n",mysocket->readInfo->count);	
+				printf("packet enter, count : %d, packetsize : %d\n",mysocket->readInfo->count, packet->getSize());	
 				if (mysocket->readInfo->count>0) {
-					int data_length = MIN(packet->getSize(), mysocket->readInfo->count);
-					uint8_t data[data_length];
-					packet->readData(14+40, data, data_length);
-					memcpy(mysocket->readInfo->read_buffer,data,data_length);
-					returnSystemCall(mysocket->syscallUUID, data_length);
+					int data_length = MIN((packet->getSize()-54), mysocket->readInfo->count);
+					uint8_t * tempdata = (uint8_t* )malloc(sizeof(uint8_t)*data_length);
+					printf("first / data_length : %d\n", data_length);
+					packet->readData(14+40, tempdata, data_length);
+					printf("data[0] : %02x\n", tempdata[0]);
+					printf("buf addr : %p\n", mysocket->readInfo->read_buffer);
+					memcpy(mysocket->readInfo->read_buffer, tempdata, data_length);
+					
+					Packet* mypacket = this->allocatePacket(54);
+					seq[0] = ntohl(htonl(seq[0])+data_length);
+					uint8_t header_length[1];
+        header_length[0] = 80;
+        uint16_t window_size[1];
+		window_size[0]= htons(51200);
+		
+			flag[0] = 0x010;
+			mypacket->writeData(14+12, dest, 4);
+			mypacket->writeData(14+16, source, 4);
+			mypacket->writeData(14+20, d_port, 2);
+			mypacket->writeData(14+22, s_port, 2);
+			mypacket->writeData(14+24, ack_seq, 4);
+			mypacket->writeData(14+28, seq, 4);
+			mypacket->writeData(14+33, flag, 1);
+			mypacket->writeData(14+32, header_length, 1);
+        	mypacket->writeData(14+34, window_size, 2);
+			uint16_t initzero[1];
+			initzero[0] = 0;
+			mypacket->writeData(14+36, initzero, 2);
+			uint8_t tempsum[20];
+			mypacket->readData(14+20, tempsum, 20);
+			uint16_t checksum[1];
+			checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
+			mypacket->writeData(14+36, checksum, 2);
+			this->sendPacket("IPv4",mypacket);
+			
+
+			
+			
+			returnSystemCall(mysocket->syscallUUID, data_length);
+
+
+
+					
 				} else { 
 					int data_length = packet->getSize();
 					uint8_t data[data_length];
@@ -425,11 +463,10 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					printf("psss11\n");
 					printf("readbuffpointer : %d\n", mysocket->read_buffer_pointer);
 				}
+				this->freePacket(packet);
+				break;
 			}
-			
-			this->freePacket(packet);
-			break;
-			}
+		}
 	}
 }
 
@@ -971,7 +1008,7 @@ void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, 
 
 
 void TCPAssignment::syscall_write(UUID syscallUUID, int pid, int fd, const void *buf, size_t count){
-	printf("enter Wrint\n");
+	//printf("enter Wrint\n");
 	struct Sockmeta * mysocket;
 	int result = 0;
 	for(int i=0;i<socketlist.size();i++){
