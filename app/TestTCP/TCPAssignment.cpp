@@ -251,8 +251,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
         			newsocket->ip.s_addr = mysocket->ip.s_addr;
         			newsocket->port = mysocket->port;
         			newsocket->addrlen = mysocket->addrlen;
-				newsocket->d_ip.s_addr = source[0];
-				newsocket->d_port = s_port[0];
+					newsocket->d_ip.s_addr = source[0];
+					newsocket->d_port = s_port[0];
         			newsocket->state = State::CLOSED;
         			socketlist.push_back(newsocket);
         		
@@ -392,9 +392,9 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					mysocket->state = State::LISTEN;
 				
 					struct sockaddr_in * myaddr_in = (struct sockaddr_in *) acceptinfo->addr;
-                                        myaddr_in->sin_family = mysocket->sin_family;
-                                        myaddr_in->sin_port = mysocket->port;
-                                        myaddr_in->sin_addr = mysocket->ip;
+                    myaddr_in->sin_family = mysocket->sin_family;
+                    myaddr_in->sin_port = mysocket->port;
+                    myaddr_in->sin_addr = mysocket->ip;
 					*(acceptinfo->addrlen) = mysocket->addrlen;
 					    
 					returnSystemCall(newsocket->syscallUUID, newsocket->fd);
@@ -409,21 +409,24 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			}
 			else if(mysocket->state == State::ESTAB){	
 				mysocket->seqnum = ntohl(ack_seq[0]);
-				printf("packet enter\n");	
+				printf("packet enter, count : %d\n",mysocket->readInfo->count);	
 				if (mysocket->readInfo->count>0) {
 					int data_length = MIN(packet->getSize(), mysocket->readInfo->count);
 					uint8_t data[data_length];
 					packet->readData(14+40, data, data_length);
-					memcpy(mysocket->readInfo->read_buffer,(void*)data[0],data_length);
+					memcpy(mysocket->readInfo->read_buffer,data,data_length);
 					returnSystemCall(mysocket->syscallUUID, data_length);
 				} else { 
 					int data_length = packet->getSize();
 					uint8_t data[data_length];
 					packet->readData(14+40, data, data_length);
-					memcpy((void*)mysocket->read_buffer[mysocket->read_buffer_pointer],data,data_length);
+					memcpy(&(mysocket->read_buffer[mysocket->read_buffer_pointer]),data,data_length);
 					mysocket->read_buffer_pointer += data_length;
+					printf("psss11\n");
+					printf("readbuffpointer : %d\n", mysocket->read_buffer_pointer);
 				}
 			}
+			
 			this->freePacket(packet);
 			break;
 			}
@@ -449,6 +452,9 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 		sockmeta->backlog = 1;
 		sockmeta->syscallUUID = -1;
 		sockmeta->read_buffer_pointer = 0;
+		sockmeta->readInfo = (struct ReadInfo *)malloc(sizeof(struct ReadInfo));
+		sockmeta->readInfo->count = 0;
+		sockmeta->readInfo->read_buffer = 0;
 		socketlist.push_back(sockmeta);
 		returnSystemCall(syscallUUID, fd);
 		//printf("syscall_socket fd : %d\n", fd);
@@ -586,9 +592,9 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			mypacket->writeData(14+22, d_port, 2);
 			mypacket->writeData(14+24, msg_seq, 4);
 			mypacket->writeData(14+28, ack_seq, 4);
-        		mypacket->writeData(14+32, header_length, 1);
+        	mypacket->writeData(14+32, header_length, 1);
 			mypacket->writeData(14+33, flag, 1);
-        		mypacket->writeData(14+34, window_size, 2);
+        	mypacket->writeData(14+34, window_size, 2);
 			uint16_t initzero[1];
 			initzero[0] = 0;
 			mypacket->writeData(14+36, initzero, 2);
@@ -764,7 +770,7 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
 	acceptinfo->addr = addr;
 	acceptinfo->addrlen = addrlen;
 	acceptinfo->syscallUUID = syscallUUID;
-        mysocket->acceptqueue.push(acceptinfo);
+    mysocket->acceptqueue.push(acceptinfo);
 		
 	if (!mysocket->estabqueue.empty()) {
 
@@ -932,6 +938,7 @@ void TCPAssignment::syscall_getpeername(UUID syscallUUID, int pid, int sockfd, s
 }
 
 void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, size_t count){
+	
 	struct Sockmeta * mysocket;
 	int result = 0;
 	for(int i=0;i<socketlist.size();i++){
@@ -941,23 +948,30 @@ void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, 
 			break;
 		}
 	}
+	printf("enter read\n");
 
 	if (mysocket->read_buffer_pointer>0) {
 		int data_length = MIN(mysocket->read_buffer_pointer, count);
-		memcpy(buf,(void*)mysocket->read_buffer[0],data_length);
-		memcpy(mysocket->read_buffer,(void*)mysocket->read_buffer[data_length],mysocket->read_buffer_pointer-data_length);
-		memset((void*)mysocket->read_buffer[mysocket->read_buffer_pointer-data_length],0,data_length);
+		memcpy(buf,&(mysocket->read_buffer[0]),data_length);
+		memcpy(mysocket->read_buffer,&(mysocket->read_buffer[data_length]),mysocket->read_buffer_pointer-data_length);
+		memset(&(mysocket->read_buffer[mysocket->read_buffer_pointer-data_length]),0,data_length);
 		mysocket->read_buffer_pointer = mysocket->read_buffer_pointer-data_length;
 		returnSystemCall(syscallUUID, data_length);
 	} else {
+		printf("pass here\n");
 		mysocket->syscallUUID = syscallUUID;
-		mysocket->readInfo->read_buffer = buf;
-		mysocket->readInfo->count = count;		
+		struct ReadInfo * tempInfo = (struct ReadInfo *)malloc(sizeof(struct ReadInfo));
+		tempInfo->read_buffer = buf;
+		tempInfo->count = count;
+		mysocket->readInfo = tempInfo;
+		//mysocket->readInfo->read_buffer = tempInfo->read_buffer;
+		//mysocket->readInfo->count = tempInfo->count;		
 	}
 }
 
 
 void TCPAssignment::syscall_write(UUID syscallUUID, int pid, int fd, const void *buf, size_t count){
+	printf("enter Wrint\n");
 	struct Sockmeta * mysocket;
 	int result = 0;
 	for(int i=0;i<socketlist.size();i++){
