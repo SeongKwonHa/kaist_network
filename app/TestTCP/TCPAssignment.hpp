@@ -35,6 +35,14 @@ struct ReadInfo{
 	int count;
 };
 
+struct TimerInfo{
+	int fd;
+	int pid;
+	int life;
+	uint8_t * packet_data;
+	int packet_length;
+};
+
 enum State{
 	LISTEN,
 	CLOSED,
@@ -70,6 +78,8 @@ struct Sockmeta{
 	uint8_t read_buffer[51200];
 	int read_buffer_pointer;
 	struct ReadInfo * readInfo;
+	UUID timer;
+	int bind_connect;
 };
 
 class TCPAssignment : public HostModule, public NetworkModule, public SystemCallInterface, private NetworkLog, private TimerModule

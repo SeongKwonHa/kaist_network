@@ -116,6 +116,13 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 	uint8_t flag[1];
 	packet->readData(14+33, flag, 1);
 
+	uint8_t tempsum[packet->getSize()-34];
+	packet->readData(14+20, tempsum, packet->getSize()-34);
+	if (0 != htons(~E::NetworkUtil::tcp_sum(source[0], dest[0], (uint8_t *)tempsum, packet->getSize()-34))) {
+		this->freePacket(packet);
+		return;
+	}
+			
 	uint32_t msg_seq[1];
 
 	struct Sockmeta * mysocket;
@@ -124,7 +131,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 	switch(*flag){
 		case 0x001:
 			{
-			//printf("packetarrived fin enter\n");
+			printf("packetarrived fin enter\n");
 			for(int i=0;i<socketlist.size();i++){
 				if((socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == dest[0] && socketlist[i]->d_port == s_port[0] && socketlist[i]->d_ip.s_addr == source[0])||(socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == INADDR_ANY && socketlist[i]->d_port == s_port[0] && socketlist[i]->d_ip.s_addr == source[0])){
 				mysocket = socketlist[i];
@@ -135,7 +142,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			}
 
 			if(result==0){
-				//printf("no socket\n");
+				printf("no socket\n");
 				this->freePacket(packet);
 				break;
 			}
@@ -165,13 +172,17 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				
 				this->sendPacket(fromModule.c_str(),mypacket);
 				this->freePacket(packet);
-	
+				printf("send ack\n");	
 				break;
 		
 			} else if(mysocket->state == State::FIN_WAIT_2 || mysocket->state == State::FIN_WAIT_1) {
 				if (mysocket->state == State::FIN_WAIT_1) {
 					mysocket->seqnum = mysocket->seqnum+1;
 				}
+				
+				if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+				mysocket->timer = 0;
+
 
 				mysocket->state = State::TIMED_WAIT;	
 				msg_seq[0]= htonl(mysocket->seqnum);
@@ -204,7 +215,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 		case 0x002:
 			{
 			//syn only
-			//printf("packetarrive syn enter\n");
+			printf("packetarrive syn enter\n");
 			
 			for(int i=0;i<socketlist.size();i++){
 			
@@ -249,16 +260,34 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
         			newsocket->pid = -1;
         			newsocket->fd = -1;
         			newsocket->sin_family = mysocket->sin_family;
-        			newsocket->ip.s_addr = mysocket->ip.s_addr;
+        			newsocket->ip.s_addr = dest[0];
         			newsocket->port = mysocket->port;
         			newsocket->addrlen = mysocket->addrlen;
-					newsocket->d_ip.s_addr = source[0];
-					newsocket->d_port = s_port[0];
+				newsocket->d_ip.s_addr = source[0];
+				newsocket->d_port = s_port[0];
         			newsocket->state = State::CLOSED;
+				newsocket->backlog = 1;
+				newsocket->syscallUUID = -1;
+				newsocket->read_buffer_pointer = 0;
+				newsocket->readInfo = (struct ReadInfo *)malloc(sizeof(struct ReadInfo));
+				newsocket->readInfo->count = 0;
+				newsocket->readInfo->read_buffer = 0;
+				newsocket->bind_connect = 0;	
         			socketlist.push_back(newsocket);
         		
 				mysocket->waitingqueue.push(newsocket);
+				
+				struct TimerInfo * timerInfo = (struct TimerInfo *)malloc(sizeof(struct TimerInfo));
+				timerInfo->fd = mysocket->fd;
+				timerInfo->pid = mysocket->pid;
+				timerInfo->life = 0;
+				timerInfo->packet_data = (uint8_t *)malloc(mypacket->getSize());
+				mypacket->readData(0, timerInfo->packet_data, (size_t)mypacket->getSize());
+				timerInfo->packet_length = mypacket->getSize();
+				UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
 				this->sendPacket(fromModule.c_str(),mypacket);
+				if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+				mysocket->timer = timer;
 				this->freePacket(packet);
 			}
 			
@@ -267,7 +296,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 		case 0x012:
 			{
 			//syn+ack
-			//printf("packetarrive syn+ack enter\n");
+			printf("packetarrive syn+ack enter\n");
 
 
 			for(int i=0;i<socketlist.size();i++){
@@ -283,7 +312,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				this->freePacket(packet);
 				break;
 			}
-
+			E::TimerModule::cancelTimer(mysocket->timer);
+			mysocket->timer = 0;
 			seq[0] = ntohl(htonl(seq[0])+1);
 			flag[0] = 0x010;
 			mypacket->writeData(14+12, dest, 4);
@@ -308,8 +338,9 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			mysocket->state = State::ESTAB;
 			
 			returnSystemCall(mysocket->syscallUUID,0);
-			this->sendPacket(fromModule.c_str(),mypacket);
 			
+			
+			this->sendPacket(fromModule.c_str(),mypacket);
 			this->freePacket(packet);
 			break;
 			}
@@ -317,7 +348,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 			{
 			//ack
 			//ack 3handshaking
-			//printf("packetarrive ack enter\n");
+			printf("packetarrive ack enter\n");
 			for(int i=0;i<socketlist.size();i++){
 				if((socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == dest[0])||(socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == INADDR_ANY)){
 					mysocket = socketlist[i];
@@ -327,13 +358,19 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				}
 			}
 		
-			if (mysocket->state != State::SYN_RCVD) {	
+			if (result != 0) {
+			if (mysocket->state != State::SYN_RCVD) {
 				for(int i=0;i<socketlist.size();i++) {
 					if((socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == dest[0] && socketlist[i]->d_port == s_port[0] && socketlist[i]->d_ip.s_addr == source[0])||(socketlist[i]->port == d_port[0] && socketlist[i]->ip.s_addr == INADDR_ANY && socketlist[i]->d_port == s_port[0] && socketlist[i]->d_ip.s_addr == source[0])){
+						if (socketlist[i]->state != 9) {
 						mysocket = socketlist[i];
-						break;					
+						index = i;
+						printf("port: %d\n", mysocket->d_port);
+						break;
+						}		
 					}
 				}
+			}
 			}
 
 			if(result==0){
@@ -342,8 +379,20 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				break;
 			}
 
+			printf("state: %d\n", mysocket->state);
+			
+			if (mysocket->timer != 0) {
+				E::TimerModule::cancelTimer(mysocket->timer);
+				printf("ack timer cancel: %d\n", mysocket->timer);
+			}
+			mysocket->timer = 0;
+
+	
 	
 			if(mysocket->state == State::FIN_WAIT_1){
+				//E::TimerModule::cancelTimer(mysocket->timer);
+				//mysocket->timer = 0;
+
 				//printf("finwait_1 to 2\n");
 				//printf("seqnum: %x\n",mysocket->seqnum);
 				if (mysocket->seqnum != ntohl(ack_seq[0])) {
@@ -353,21 +402,27 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				this->freePacket(packet);
 				break;
 			} else if (mysocket->state == State::TIMED_WAIT) {
+			//	if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+			//	mysocket->timer = 0;
+
 				this->freePacket(packet);
 			
 				mysocket->seqnum = ntohl(ack_seq[0]);
 				//this->timerCallback(0);
-			        //기다리기
-                                mysocket->state = State::CLOSED;
-                                delete mysocket;
-                                socketlist.erase(socketlist.begin()+index);
-                                removeFileDescriptor(socketlist[index]->pid, socketlist[index]->fd);
-                                returnSystemCall(socketlist[index]->syscallUUID, 0);
-                                break;
+				struct TimerInfo * timerInfo = (struct TimerInfo *)malloc(sizeof(struct TimerInfo));
+				timerInfo->fd = mysocket->fd;
+				timerInfo->pid = mysocket->pid;
 				
+				UUID timer = E::TimerModule::addTimer((void *)timerInfo, 60000000000);
+			        printf("time creater: %d", timer);
+				//기다리기
+                               
 				break;
 			}
 			else if(mysocket->state == State::LAST_ACK){
+				//E::TimerModule::cancelTimer(mysocket->timer);
+				//mysocket->timer = 0;
+
 				mysocket->seqnum = ntohl(ack_seq[0]);
 				mysocket->state = State::CLOSED;
 				delete mysocket;
@@ -377,10 +432,21 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				break;
 			}
 			else if(mysocket->state == State::SYN_RCVD){	
+				printf("syn_rcvd enter\n");
 				mysocket->seqnum = ntohl(ack_seq[0]);
-				if (mysocket->waitingqueue.size()==1) {
+				if (mysocket->bind_connect != 0) {
+					printf("syscallUUID\n");
+					returnSystemCall(mysocket->syscallUUID, 0);
 					mysocket->state = State::ESTAB;
+					return;
 				}
+				if (mysocket->waitingqueue.size()==1) {
+					mysocket->state = State::LISTEN;
+					//mysocket->state = State::ESTAB;
+				}
+				//E::TimerModule::cancelTimer(mysocket->timer);
+				//mysocket->timer = 0;
+
 
 				struct Sockmeta * estabsocket;
 				estabsocket = mysocket->waitingqueue.front();
@@ -389,6 +455,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				mysocket->estabqueue.push(estabsocket);
 				
 				if(!mysocket->acceptqueue.empty()){
+					printf("packet arrived accept\n");
 					struct Sockmeta * newsocket = mysocket->estabqueue.front();
 					mysocket->estabqueue.pop();
 					struct AcceptInfo * acceptinfo = mysocket->acceptqueue.front();
@@ -399,9 +466,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					newsocket->syscallUUID = acceptinfo->syscallUUID;
 					newsocket->seqnum = 0;
 					newsocket->seqnum = ntohl(ack_seq[0]);
-
 					mysocket->state = State::LISTEN;
-				
 					struct sockaddr_in * myaddr_in = (struct sockaddr_in *) acceptinfo->addr;
 					myaddr_in->sin_family = mysocket->sin_family;
                    			myaddr_in->sin_port = mysocket->port;
@@ -409,6 +474,9 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					*(acceptinfo->addrlen) = mysocket->addrlen;
 					    
 					returnSystemCall(newsocket->syscallUUID, newsocket->fd);
+					
+					printf("syn_rcvd syscall: %d\n", mysocket->syscallUUID);
+					
 					//printf("0x010 getsocket:%d\n",newsocket->fd);
 				} else {
 					struct Sockmeta * newsocket = mysocket->estabqueue.back();
@@ -417,17 +485,16 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				}
 				this->freePacket(packet);
 				break;
-			}
-			else if(mysocket->state == State::ESTAB){	
+			} else if(mysocket->state == State::ESTAB){
 				mysocket->seqnum = ntohl(ack_seq[0]);
-				printf("packet enter, count : %d, packetsize : %d\n",mysocket->readInfo->count, packet->getSize());	
+				//printf("packet enter, count : %d, packetsize : %d\n",mysocket->readInfo->count, packet->getSize());	
 				if (mysocket->readInfo->count>0) {
 					int data_length = MIN((packet->getSize()-54), mysocket->readInfo->count);
 					uint8_t * tempdata = (uint8_t* )malloc(sizeof(uint8_t)*data_length);
-					printf("first / data_length : %d\n", data_length);
+					//printf("first / data_length : %d\n", data_length);
 					packet->readData(14+40, tempdata, data_length);
-					printf("data[0] : %02x\n", tempdata[0]);
-					printf("buf addr : %p\n", mysocket->readInfo->read_buffer);
+					//printf("data[0] : %02x\n", tempdata[0]);
+					//printf("buf addr : %p\n", mysocket->readInfo->read_buffer);
 					memcpy(mysocket->readInfo->read_buffer, tempdata, data_length);
 					
 					Packet* mypacket = this->allocatePacket(54);
@@ -455,6 +522,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					uint16_t checksum[1];
 					checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
 					mypacket->writeData(14+36, checksum, 2);
+					
 					this->sendPacket("IPv4",mypacket);
 					
 					if (packet->getSize()-54>data_length) {
@@ -471,8 +539,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					packet->readData(14+40, data, data_length);
 					memcpy(&(mysocket->read_buffer[mysocket->read_buffer_pointer]),data,data_length);
 					mysocket->read_buffer_pointer += data_length;
-					printf("psss11\n");
-					printf("readbuffpointer : %d\n", mysocket->read_buffer_pointer);
+					//printf("psss11\n");
+					//printf("readbuffpointer : %d\n", mysocket->read_buffer_pointer);
 				}
 				this->freePacket(packet);
 				break;
@@ -504,6 +572,7 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 		sockmeta->readInfo->count = 0;
 		sockmeta->readInfo->read_buffer = 0;
 		socketlist.push_back(sockmeta);
+		sockmeta->bind_connect = 0;
 		returnSystemCall(syscallUUID, fd);
 		//printf("syscall_socket fd : %d\n", fd);
 		//소켓을 만들고 어디 테이블에 넣어야할듯 - socketlist
@@ -536,7 +605,7 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			mysocket->state = State::FIN_WAIT_1;
 			mysocket->syscallUUID = syscallUUID;
 				
-			int interface_index = 0;
+			/*int interface_index = 0;
                 	uint8_t temp_addr[4];
                 	uint32_t d_ip_addr = mysocket->d_ip.s_addr;
                 	for (int i=0; i<4; i++) {
@@ -550,11 +619,12 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
                 	ip = ip_buffer[0] << 24;
                 	ip += ip_buffer[1] << 16;
                 	ip += ip_buffer[2] << 8;
-                	ip += ip_buffer[3] << 0;
+                	ip += ip_buffer[3] << 0;*/
 				
 			//printf("source_ip: %x\n", mysocket->ip.s_addr);
 			uint32_t source[1];
-			source[0] = htonl(ip);
+			source[0] = mysocket->ip.s_addr;
+			//source[0] = htonl(ip);
 			uint32_t dest[1];
 			dest[0] = mysocket->d_ip.s_addr;
 			uint16_t s_port[1];
@@ -591,14 +661,27 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			uint16_t checksum[1];
 			checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
 			mypacket->writeData(14+36, checksum, 2);
+			
+			struct TimerInfo * timerInfo = (struct TimerInfo *)malloc(sizeof(struct TimerInfo));
+			timerInfo->fd = sockfd;
+			timerInfo->pid = pid;
+			timerInfo->life = 0;
+			timerInfo->packet_data = (uint8_t *)malloc(mypacket->getSize());
+			mypacket->readData(0, timerInfo->packet_data, (size_t)mypacket->getSize());
+			timerInfo->packet_length = mypacket->getSize();
+			UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
+			printf("close estab time create: %d\n", timer);
 			this->sendPacket("IPv4",mypacket);
+			if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+			mysocket->timer = timer;	
+	
 		} else if(mysocket->state == State::CLOSE_WAIT){
 			//printf("close wait endter\n");
 			Packet* mypacket = this->allocatePacket(54);
 			mysocket->state = State::LAST_ACK;
 			mysocket->syscallUUID = syscallUUID;
 			
-			int interface_index = 0;
+			/*int interface_index = 0;
                         uint8_t temp_addr[4];
                         uint32_t d_ip_addr = mysocket->d_ip.s_addr;
                         for (int i=0; i<4; i++) {
@@ -606,16 +689,19 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
                                 d_ip_addr >>= 8;
                         }
                         interface_index = this->getHost()->getRoutingTable(temp_addr);
-                        uint8_t ip_buffer[4];
+                        printf("d_ip.s_addr: %d", d_ip_addr);
+			printf("interface_index: %d\n", interface_index);
+			uint8_t ip_buffer[4];
                         bool routing_result = this->getHost()->getIPAddr(ip_buffer, interface_index);
                         uint32_t ip;
                         ip = ip_buffer[0] << 24;
                         ip += ip_buffer[1] << 16;
                         ip += ip_buffer[2] << 8;
-                        ip += ip_buffer[3] << 0;
+                        ip += ip_buffer[3] << 0;*/
 
 			uint32_t source[1];
-			source[0] = htonl(ip);
+			source[0] = mysocket->ip.s_addr;
+			//source[0] = htonl(ip);
 			uint32_t dest[1];
 			dest[0] = mysocket->d_ip.s_addr;
 			uint16_t s_port[1];
@@ -640,9 +726,9 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			mypacket->writeData(14+22, d_port, 2);
 			mypacket->writeData(14+24, msg_seq, 4);
 			mypacket->writeData(14+28, ack_seq, 4);
-        	mypacket->writeData(14+32, header_length, 1);
+	        	mypacket->writeData(14+32, header_length, 1);
 			mypacket->writeData(14+33, flag, 1);
-        	mypacket->writeData(14+34, window_size, 2);
+	        	mypacket->writeData(14+34, window_size, 2);
 			uint16_t initzero[1];
 			initzero[0] = 0;
 			mypacket->writeData(14+36, initzero, 2);
@@ -651,7 +737,22 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			uint16_t checksum[1];
 			checksum[0] = htons((~E::NetworkUtil::tcp_sum(dest[0], source[0], (uint8_t *)tempsum, 20)));
 			mypacket->writeData(14+36, checksum, 2);
+			
+			struct TimerInfo * timerInfo = (struct TimerInfo *)malloc(sizeof(struct TimerInfo));
+			timerInfo->fd = sockfd;
+			timerInfo->pid = pid;
+			timerInfo->life = 0;
+			timerInfo->packet_data = (uint8_t *)malloc(mypacket->getSize());
+			mypacket->readData(0, timerInfo->packet_data, (size_t)mypacket->getSize());
+			timerInfo->packet_length = mypacket->getSize();
+			UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
+			printf("close close wait time create: %d\n", timer);
 			this->sendPacket("IPv4",mypacket);
+			printf("close timer cancel: %d\n", mysocket->timer);
+			if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+			mysocket->timer = timer;
+			printf("close timer create: %d\n", mysocket->timer);
+			printf("close port: %d\n", mysocket->d_port);	
 			
 		}
 		else{
@@ -668,7 +769,7 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 void TCPAssignment::syscall_bind(UUID syscallUUID, int pid, int sockfd, struct sockaddr *myaddr, socklen_t addrlen){
 	//AF_INET인지 시스템 내에서 통신하는 AF_UNIX에 따라서 달라짐.
 	//AF_INET의 경우 sockaddr을 인터넷에서 사용하는 sockaddr_in으로 들어온다.
-	//printf("**syscall_bind fd : %d\n", sockfd);
+	printf("**syscall_bind fd : %d\n", sockfd);
 
 	if(myaddr->sa_family==AF_INET){
 		struct sockaddr_in * myaddr_in=(struct sockaddr_in *) myaddr;
@@ -831,7 +932,7 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
                 newsocket->pid = acceptinfo->pid;
                 newsocket->syscallUUID = acceptinfo->syscallUUID;		
 	
-                mysocket->state = State::ESTAB;
+                //mysocket->state = State::ESTAB;
 
                 struct sockaddr_in * myaddr_in = (struct sockaddr_in *) acceptinfo->addr;
                 myaddr_in->sin_family = mysocket->sin_family;
@@ -839,16 +940,17 @@ void TCPAssignment::syscall_accept(UUID syscallUUID, int pid, int sockfd, struct
                 myaddr_in->sin_addr = mysocket->ip;
                 *(acceptinfo->addrlen) = mysocket->addrlen;
 
-
 		returnSystemCall(syscallUUID, newsocket->fd);
                 //estabqueu에서 꺼내온??
+		
+					printf("accept accept\n");
 	}
 
 	//printf("accept end\n");
 }
 
 void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const struct sockaddr *addr, socklen_t addrlen){
-	//printf("connect enter\n");
+	printf("connect enter\n");
 	struct Sockmeta * mysocket;
 	struct sockaddr_in * myaddr_in=(struct sockaddr_in *) addr;
 	int result = 0;
@@ -898,6 +1000,21 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
         	mysocket->port = htons(port);
         	mysocket->ip.s_addr = htonl(ip);
         	mysocket->addrlen = sizeof(struct sockaddr_in);
+	} else {
+		printf("pass\n");
+		printf("syscall: %d\n", syscallUUID);
+		sa_family_t sin_family = myaddr_in->sin_family;
+	        unsigned short int port = myaddr_in->sin_port;
+       		struct in_addr ip = myaddr_in->sin_addr;
+	
+		mysocket->syscallUUID = syscallUUID;
+		mysocket->d_sin_family = sin_family;
+	        mysocket->d_port = port;
+	        mysocket->d_ip.s_addr = ip.s_addr;
+	        mysocket->d_addrlen = addrlen;
+		mysocket->bind_connect = 1;		
+		//returnSystemCall(mysocket->syscallUUID,0);
+		return;
 	}
 
 	sa_family_t sin_family = myaddr_in->sin_family;
@@ -949,10 +1066,21 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
 	checksum[0] = htons((~E::NetworkUtil::tcp_sum(source[0], dest[0], (uint8_t *)tempsum, 20)));
 	mypacket->writeData(14+36, checksum, 2);
 
-		
-
-	this->sendPacket("IPv4",mypacket);	
-	//this->freePacket(mypacket);
+	struct TimerInfo * timerInfo = (struct TimerInfo *)malloc(sizeof(struct TimerInfo));
+	timerInfo->fd = sockfd;
+	timerInfo->pid = pid;
+	timerInfo->life = 0;
+	timerInfo->packet_data = (uint8_t *)malloc(mypacket->getSize());
+	mypacket->readData(0, timerInfo->packet_data, (size_t)mypacket->getSize());
+	timerInfo->packet_length = mypacket->getSize();
+	UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
+	this->sendPacket("IPv4",mypacket);
+	if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+	mysocket->timer = timer;
+	
+	//printf("timer create UUID: %d\n", mysocket->timer);
+	//printf("abs time: %d\n", this->getHost()->getSystem()->getCurrentTime());
+	
 	//printf("connect packet send success\n");
 
 	//소켓 다시 보내야함.
@@ -996,8 +1124,15 @@ void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, 
 			break;
 		}
 	}
-	printf("enter read\n");
+		
+	if (result == 0) {
+		return;
+	}	
+
+	//printf("enter read\n");
 	if (mysocket->read_buffer_pointer>0) {
+		//printf("pass 1\n");
+		//printf("pointer: %d\n", mysocket->read_buffer_pointer);
 		int data_length = MIN(mysocket->read_buffer_pointer, count);
 		memcpy(buf,&(mysocket->read_buffer[0]),data_length);
 		memcpy(mysocket->read_buffer,&(mysocket->read_buffer[data_length]),mysocket->read_buffer_pointer-data_length);
@@ -1005,7 +1140,7 @@ void TCPAssignment::syscall_read(UUID syscallUUID, int pid,  int fd, void *buf, 
 		mysocket->read_buffer_pointer = mysocket->read_buffer_pointer-data_length;
 		returnSystemCall(syscallUUID, data_length);
 	} else {
-		printf("pass here\n");
+		//printf("pass 2\n");
 		mysocket->syscallUUID = syscallUUID;
 		struct ReadInfo * tempInfo = (struct ReadInfo *)malloc(sizeof(struct ReadInfo));
 		tempInfo->read_buffer = buf;
@@ -1098,7 +1233,45 @@ void TCPAssignment::syscall_write(UUID syscallUUID, int pid, int fd, const void 
 
 void TCPAssignment::timerCallback(void* payload)
 {
-//	UUID timer = E::TimerModule::addTimer(payload, 60000);
+	printf("timercallback\n");
+	if (payload != 0) {
+		struct TimerInfo * timerInfo = (struct TimerInfo *)payload;
+		if (timerInfo->life > 5) return;
+		timerInfo->life++;
+		printf("timer life %d\n", timerInfo->life);
+		int sockfd = timerInfo->fd;
+		int pid = timerInfo->pid;
+		int result = 0;
+		int index = 0;
+		Sockmeta * mysocket;
+		for(int i=0;i<socketlist.size();i++){
+			if(socketlist[i]->fd==sockfd&&socketlist[i]->pid==pid){
+				mysocket = socketlist[i];
+				index = i;
+				result = 1;
+				break;
+			}
+		}
+		
+		if (mysocket->state == State::TIMED_WAIT) {
+			mysocket->state = State::CLOSED;
+                        delete mysocket;
+                        socketlist.erase(socketlist.begin()+index);
+                        removeFileDescriptor(socketlist[index]->pid, socketlist[index]->fd);
+                        returnSystemCall(socketlist[index]->syscallUUID, 0);	
+		} else {
+			printf("timer callback UUID: %d\n", mysocket->timer);
+		
+			Packet* mypacket = this->allocatePacket(timerInfo->packet_length);
+			mypacket->writeData(0, timerInfo->packet_data, timerInfo->packet_length);
+			this->sendPacket("IPv4",mypacket);	
+			UUID timer = E::TimerModule::addTimer((void *) timerInfo, 100000000);	
+			printf("timercallback time create: %d\n", timer);
+			if (result == 1) {
+				mysocket->timer = timer;
+			}
+		}
+	}
 }
 
 
