@@ -393,9 +393,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				if (mysocket->timer != 0) {
 					E::TimerModule::cancelTimer(mysocket->timer);
 					printf("timer cancel: %d\n", mysocket->timer);
-			
+					mysocket->timer = 0;
 				}
-				mysocket->timer = 0;
 
 				if(mysocket->state == State::FIN_WAIT_1 && mysocket->seqnum+1 == ntohl(ack_seq[0])){
 					//E::TimerModule::cancelTimer(mysocket->timer);
@@ -553,10 +552,9 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 									returnSystemCall(mysocket->syscallUUID,timerInfo->packet_length-54);	
 								}
 								break;
-							}
+							 }
 						}
-
-						mysocket->timer = 0;
+						//mysocket->timer = 0;
 						return;
 					}
 					if (mysocket->readInfo->count>0) {
@@ -1379,6 +1377,7 @@ void TCPAssignment::timerCallback(void* payload)
 					mypacket->writeData(0, mysocket->write_buffer[i]->packet_data, mysocket->write_buffer[i]->packet_length);
 					this->sendPacket("IPv4",mypacket);	
 				} else {
+					printf("timercallback resend\n");
 					Packet* mypacket = this->allocatePacket(timerInfo->packet_length);
 					mypacket->writeData(0, timerInfo->packet_data, timerInfo->packet_length);
 					this->sendPacket("IPv4",mypacket);	
