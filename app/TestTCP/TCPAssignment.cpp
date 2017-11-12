@@ -180,6 +180,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					}
 
 					if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+					printf("timer cancel: %d\n", mysocket->timer);
+			
 					mysocket->timer = 0;
 
 
@@ -287,6 +289,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
 					this->sendPacket(fromModule.c_str(),mypacket);
 					if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+					printf("timer create: %d\n", timer);
+					printf("timer cancel: %d\n", mysocket->timer);	
 					mysocket->timer = timer;
 					this->freePacket(packet);
 				}
@@ -319,6 +323,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 				mysocket->peer_window_size = window_size[0];
 
 				E::TimerModule::cancelTimer(mysocket->timer);
+				printf("timer cancel: %d", mysocket->timer);
 				mysocket->timer = 0;
 				seq[0] = ntohl(htonl(seq[0])+1);
 				flag[0] = 0x010;
@@ -387,6 +392,8 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 
 				if (mysocket->timer != 0) {
 					E::TimerModule::cancelTimer(mysocket->timer);
+					printf("timer cancel: %d\n", mysocket->timer);
+			
 				}
 				mysocket->timer = 0;
 
@@ -413,8 +420,11 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					struct TimerInfo * timerInfo = (struct TimerInfo *)malloc(sizeof(struct TimerInfo));
 					timerInfo->fd = mysocket->fd;
 					timerInfo->pid = mysocket->pid;
-					timerInfo->seqnum =0;	
+					timerInfo->seqnum =0;
+					timerInfo->life =0;
 					UUID timer = E::TimerModule::addTimer((void *)timerInfo, 60000000000);
+					printf("time wait timer create: %d\n", timer);
+			
 					//기다리기
 
 					break;
@@ -502,22 +512,42 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 						mysocket->peer_window_size = window_size[0];
 						for(int i=0;i<mysocket->write_buffer.size();i++) {
 							if (mysocket->write_buffer[i]->seqnum == ntohl(ack_seq[0])) {
-								E::TimerModule::cancelTimer(mysocket->write_buffer[i]->timer);
-								free(mysocket->write_buffer[i]);
 								if (mysocket->write_buffer_size<=mysocket->peer_window_size) {
-									mysocket->write_buffer_size -= (mysocket->write_buffer[i]->packet_length-54);
-									mysocket->write_buffer.erase(mysocket->write_buffer.begin()+i);
+									if (mysocket->seqnum == ntohl(ack_seq[0])) {
+										printf("delete\n");
+										if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+										printf("timer cancel: %d\n", mysocket->timer);
+										mysocket->timer = 0;
+									} 
+									for (int j=0;j<=i;j++) {
+										free(mysocket->write_buffer[j]);
+										mysocket->write_buffer_size -= (mysocket->write_buffer[j]->packet_length-54);
+										mysocket->write_buffer.erase(mysocket->write_buffer.begin()+j);
+									}
 								}
 								else if (mysocket->write_buffer_size>mysocket->peer_window_size) {
-									mysocket->write_buffer_size -= (mysocket->write_buffer[i]->packet_length-54);
-									mysocket->write_buffer.erase(mysocket->write_buffer.begin()+i);
+									printf("over window size\n");
+									if (mysocket->seqnum == ntohl(ack_seq[0])) {
+										if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+										printf("timer cancel: %d\n", mysocket->timer);
+										mysocket->timer = 0;
+									} 
+									for (int j=0;j<=i;j++) {
+										free(mysocket->write_buffer[j]);
+										mysocket->write_buffer_size -= (mysocket->write_buffer[j]->packet_length-54);
+										mysocket->write_buffer.erase(mysocket->write_buffer.begin()+j);
+									}
 									struct TimerInfo * timerInfo = mysocket->write_buffer[mysocket->write_buffer.size()-1];
+									printf("length : %d\n",timerInfo->packet_length);
+									printf("life: %d\n", timerInfo->life);
 									Packet* mypacket = this->allocatePacket(timerInfo->packet_length);
 									mypacket->writeData(0, timerInfo->packet_data, timerInfo->packet_length);
 									this->sendPacket("IPv4",mypacket);	
 									UUID timer = E::TimerModule::addTimer((void *) timerInfo, 100000000);		
-
-									timerInfo->timer = timer;
+									if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+									printf("timer create: %d\n", timer);
+									printf("timer cancel: %d\n", mysocket->timer);
+									mysocket->timer = timer;
 
 									mysocket->seqnum += (timerInfo->packet_length-54);
 									returnSystemCall(mysocket->syscallUUID,timerInfo->packet_length-54);	
@@ -715,7 +745,9 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
 			this->sendPacket("IPv4",mypacket);
 			if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
-			mysocket->timer = timer;	
+			printf("timer create: %d\n", timer);
+			printf("timer cancel: %d\n", mysocket->timer);
+			mysocket->timer = timer;
 
 		} else if(mysocket->state == State::CLOSE_WAIT){
 			//printf("close wait endter\n");
@@ -791,6 +823,8 @@ void TCPAssignment::syscall_close(UUID syscallUUID, int pid, int sockfd){
 			UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
 			this->sendPacket("IPv4",mypacket);
 			if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+			printf("timer create: %d\n", timer);
+			printf("timer cancel: %d\n", mysocket->timer);
 			mysocket->timer = timer;
 
 		}
@@ -1113,6 +1147,8 @@ void TCPAssignment::syscall_connect(UUID syscallUUID, int pid, int sockfd, const
 	UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
 	this->sendPacket("IPv4",mypacket);
 	if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+			printf("timer create: %d\n", timer);
+		printf("timer cancel: %d\n", mysocket->timer);
 	mysocket->timer = timer;
 
 	//printf("timer create UUID: %d\n", mysocket->timer);
@@ -1272,7 +1308,10 @@ void TCPAssignment::syscall_write(UUID syscallUUID, int pid, int fd, const void 
 		timerInfo->packet_length = mypacket->getSize();
 		UUID timer = E::TimerModule::addTimer((void *) timerInfo,100000000);
 		this->sendPacket("IPv4",mypacket);
-		timerInfo->timer = timer;
+		if (mysocket->timer != 0) E::TimerModule::cancelTimer(mysocket->timer);
+		printf("timer create: %d\n", timer);
+		printf("timer cancel: %d\n", mysocket->timer);
+		mysocket->timer = timer;
 		mysocket->write_buffer.push_back(timerInfo);
 		mysocket->write_buffer_size += data_length;
 		mysocket->seqnum += data_length;
@@ -1297,9 +1336,10 @@ void TCPAssignment::timerCallback(void* payload)
 	printf("timercallback\n");
 	if (payload != 0) {
 		struct TimerInfo * timerInfo = (struct TimerInfo *)payload;
+		printf("timer life %d\n", timerInfo->life);
+		printf("packet_length: %d\n", timerInfo->packet_length);
 		if (timerInfo->life > 5) return;
 		timerInfo->life++;
-		printf("timer life %d\n", timerInfo->life);
 		int sockfd = timerInfo->fd;
 		int pid = timerInfo->pid;
 		int result = 0;
@@ -1313,30 +1353,40 @@ void TCPAssignment::timerCallback(void* payload)
 				break;
 			}
 		}
+		if (result == 0) {
+			printf("no socket\n");
+			return;
+		}
 		if (mysocket->state == State::TIMED_WAIT) {
-			printf("timer dead\n");
 			mysocket->state = State::CLOSED;
                         delete mysocket;
                         socketlist.erase(socketlist.begin()+index);
                         removeFileDescriptor(socketlist[index]->pid, socketlist[index]->fd);
                         returnSystemCall(socketlist[index]->syscallUUID, 0);	
 		} else if (timerInfo->seqnum == 0) {
+			printf("seqnum\n");
 			Packet* mypacket = this->allocatePacket(timerInfo->packet_length);
 			mypacket->writeData(0, timerInfo->packet_data, timerInfo->packet_length);
 			this->sendPacket("IPv4",mypacket);	
 			UUID timer = E::TimerModule::addTimer((void *) timerInfo, 100000000);	
-			if (result == 1) {
-				mysocket->timer = timer;
-			}
+			printf("timer create: %d\n", timer);
+			printf("timer cancel: %d\n", mysocket->timer);
+			mysocket->timer = timer;
 		} else {
-			Packet* mypacket = this->allocatePacket(timerInfo->packet_length);
-			mypacket->writeData(0, timerInfo->packet_data, timerInfo->packet_length);
-			this->sendPacket("IPv4",mypacket);	
-			UUID timer = E::TimerModule::addTimer((void *) timerInfo, 100000000);	
-			printf("timercallback time create: %d\n", timer);
 			for(int i=0;i<mysocket->write_buffer.size();i++) {
-				if (mysocket->write_buffer[i]->seqnum == timerInfo->seqnum) {
-					mysocket->write_buffer[i]->timer = timer;	
+				if (mysocket->write_buffer[i]->seqnum < timerInfo->seqnum) {
+					Packet* mypacket = this->allocatePacket(mysocket->write_buffer[i]->packet_length);
+					mypacket->writeData(0, mysocket->write_buffer[i]->packet_data, mysocket->write_buffer[i]->packet_length);
+					this->sendPacket("IPv4",mypacket);	
+				} else {
+					Packet* mypacket = this->allocatePacket(timerInfo->packet_length);
+					mypacket->writeData(0, timerInfo->packet_data, timerInfo->packet_length);
+					this->sendPacket("IPv4",mypacket);	
+					UUID timer = E::TimerModule::addTimer((void *) timerInfo, 100000000);	
+					printf("timer create: %d\n", timer);
+					printf("timer cancel: %d\n", mysocket->timer);
+					mysocket->timer = timer;
+					break;
 				}
 			}
 		}
