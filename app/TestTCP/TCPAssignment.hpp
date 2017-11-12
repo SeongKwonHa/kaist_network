@@ -38,6 +38,8 @@ struct ReadInfo{
 struct TimerInfo{
 	int fd;
 	int pid;
+	uint32_t seqnum;
+	UUID timer;
 	int life;
 	uint8_t * packet_data;
 	int packet_length;
@@ -80,6 +82,9 @@ struct Sockmeta{
 	struct ReadInfo * readInfo;
 	UUID timer;
 	int bind_connect;
+	std::vector<TimerInfo *> write_buffer;
+	int write_buffer_size;
+	int peer_window_size;
 };
 
 class TCPAssignment : public HostModule, public NetworkModule, public SystemCallInterface, private NetworkLog, private TimerModule
