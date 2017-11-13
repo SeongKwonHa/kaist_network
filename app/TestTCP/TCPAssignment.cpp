@@ -280,6 +280,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 					newsocket->first = 0;
 					newsocket->retranscall = 0;
 					newsocket->write_buffer_size = 0;
+					mysocket->fast_retransmit = 0;
 					socketlist.push_back(newsocket);
 
 					mysocket->waitingqueue.push(newsocket);
@@ -518,34 +519,40 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 						packet->readData(14+34,window_size,2);
 						window_size[0] = ntohs(window_size[0]);
 						if (mysocket->save_seqnum == ntohl(ack_seq[0]) && mysocket->seqnum > ntohl(ack_seq[0]) && mysocket->peer_window_size != window_size[0]) {
-							printf("mysocket->seqnum: %d\n",mysocket->seqnum);
-							printf("ack_seq[0]: %d", ntohl(ack_seq[0]));
+							printf("mysocket->seqnum: %d  ",mysocket->seqnum);
+							printf("ack_seq[0]: %d ", ntohl(ack_seq[0]));
+							printf("fast_retrans :%d\n", mysocket->fast_retransmit);
 							mysocket->fast_retransmit++;
 						} else {
 							mysocket->fast_retransmit = 0;
 						}
 						mysocket->save_seqnum = ntohl(ack_seq[0]);
-						if (mysocket->fast_retransmit==2) {
+						if (mysocket->fast_retransmit>=2) {
 							mysocket->retranscall = 1;
 							printf("retransmit\n");
 							int buffer_size = 0;
 							for(int i=0;i<mysocket->write_buffer.size();i++) {
-								if (mysocket->write_buffer[i]->seqnum >= ntohl(ack_seq[0]) && buffer_size < 512*((mysocket->slowstart*4)/4)) {
+								if (mysocket->write_buffer[i]->seqnum >= ntohl(ack_seq[0]) && buffer_size < (MIN(mysocket->peer_window_size,mysocket->slowstart*512)/2)) {
 									Packet* mypacket = this->allocatePacket(mysocket->write_buffer[i]->packet_length);
 									mypacket->writeData(0, mysocket->write_buffer[i]->packet_data, mysocket->write_buffer[i]->packet_length);
 									this->sendPacket("IPv4",mypacket);	
-									buffer_size += (mysocket->write_buffer[i]->packet_length-54);	
+									
+									//buffer_size += (mysocket->write_buffer[i]->packet_length-54);	
 								}
 							}
-							mysocket->slowstart = ((mysocket->slowstart*2)/4);
+							
+								mysocket->slowstart = (MIN((mysocket->peer_window_size/512),(mysocket->slowstart)))/2;
+								mysocket->fast_retransmit = 0;
+							
 							//mysocket->callindex = 0;
 
 						}
 
 						mysocket->peer_window_size = window_size[0];
+						//printf("**pwd: %d, wind size: %d\n",mysocket->peer_window_size, window_size[0]);
 						for(int i=0;i<mysocket->write_buffer.size();i++) {
 							if (mysocket->write_buffer[i]->seqnum == ntohl(ack_seq[0])) {
-								if (mysocket->write_buffer_size<=MIN(mysocket->peer_window_size, mysocket->slowstart*512)) {
+								if (mysocket->write_buffer_size<MIN(mysocket->peer_window_size, mysocket->slowstart*512)) {
 									
 									if (mysocket->seqnum == ntohl(ack_seq[0])) {
 										//printf("delete\n");
@@ -559,7 +566,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 										mysocket->write_buffer.erase(mysocket->write_buffer.begin());
 									}
 								}
-								else if (mysocket->write_buffer_size>MIN(mysocket->peer_window_size, mysocket->slowstart*512)) {
+								else if (mysocket->write_buffer_size>=MIN(mysocket->peer_window_size, mysocket->slowstart*512)) {
 									
 									//printf("over window size\n");
 									if (mysocket->seqnum == ntohl(ack_seq[0])) {
@@ -594,7 +601,7 @@ void TCPAssignment::packetArrived(std::string fromModule, Packet* packet){
 												mysocket->slowstart = (mysocket->slowstart)*2;
 											}
 											else{
-												if(mysocket->slowstart == 64){
+												if(mysocket->slowstart == 32){
 
 												}
 												else{
@@ -707,6 +714,7 @@ void TCPAssignment::syscall_socket(UUID syscallUUID, int pid, int domain, int ty
 		sockmeta->first = 0;
 		sockmeta->retranscall = 0;
 		sockmeta->write_buffer_size = 0;
+		sockmeta->fast_retransmit = 0;
 		returnSystemCall(syscallUUID, fd);
 		
 		//printf("syscall_socket fd : %d\n", fd);
@@ -1373,6 +1381,7 @@ void TCPAssignment::syscall_write(UUID syscallUUID, int pid, int fd, const void 
 	mypacket->writeData(14+36, checksum, 2);
 	
 	mysocket->real_wsize = MIN(mysocket->peer_window_size, mysocket->slowstart*512);
+	//printf("pid: %d, fd: %d\n", pid, fd);
 	printf("call: %d, write: %d, pwz: %d, slow: %d, real: %d\n",mysocket->callindex*512, mysocket->write_buffer_size, mysocket->peer_window_size, mysocket->slowstart*512, mysocket->real_wsize);
 
 
@@ -1464,6 +1473,7 @@ void TCPAssignment::timerCallback(void* payload)
 			//printf("timer cancel: %d\n", mysocket->timer);
 			mysocket->timer = timer;
 		} else {
+			printf("pass timecall write\n");
 			for(int i=0;i<mysocket->write_buffer.size();i++) {
 				if (mysocket->write_buffer[i]->seqnum < timerInfo->seqnum) {
 					Packet* mypacket = this->allocatePacket(mysocket->write_buffer[i]->packet_length);
@@ -1481,6 +1491,7 @@ void TCPAssignment::timerCallback(void* payload)
 					break;
 				}
 			}
+			
 			mysocket->retranscall = 1;
 
 			mysocket->slowstart = 1;
